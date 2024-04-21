@@ -206,9 +206,47 @@ void forwardWithAlignment() {
   }
   //Nincs fal mellette
   else{
-
+    mpu.update();
+    float angle = mpu.getAngleZ();
+    double middleDistance = (lastCorrectAngle - angle) / 2.0; //gyro alapján egyenesen a legutóbbi helyezkedéstől(flhoz igazítás vagy fordulás) számolva tartja a szöget elvileg :D
+    PidDrive(middleDistance);
   }
 
+}
+
+//RFID kártya 0, 1, 2, 3-vége outputtal
+int rfidToDirection(){
+  if (mfrc522.PICC_IsNewCardPresent()) {
+    if (mfrc522.PICC_ReadCardSerial()) {
+      // RFID kártya adatok kiolvasása
+      String cardData = "";
+      for (byte i = 0; i < mfrc522.uid.size; i++) {
+        cardData += (String)(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " ");
+        cardData += String(mfrc522.uid.uidByte[i], HEX);
+      }
+      Serial.print("Sima: ");
+      Serial.print(cardData);
+      Serial.println();
+      String vagott = cardData.substring (4,8);
+      Serial.print("vagott: ");
+      Serial.print(vagott);
+      Serial.println();
+      
+
+      // Kártya adatok alapján műveletek végrehajtása
+      if (cardData.substring (4,8) == "bc 0") {
+        Serial.print("fordulas balra");
+        return 1;
+      } else if (cardData.substring (4,8) == "bc f") {
+        Serial.print("fordulas jobbra");
+        return 2;
+      } else if (cardData.substring (4,8) == "bc 5") {
+        Serial.print("palya vege");
+        return 3;
+      }
+    }
+  }
+  return 0;
 }
   
 
