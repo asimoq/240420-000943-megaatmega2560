@@ -36,7 +36,7 @@ unsigned long timer = 0;
 #define ENB 10
 
 // PID változók
-double setpoint = 0; // Kívánt távolság
+double setpoint = 0; // Kívánt érték
 double input, output;
 double Kp = 2, Ki = 5, Kd = 1; // PID tényezők
 
@@ -88,35 +88,35 @@ void setup() {
 }
 
 // motorbeállítás
-void drive(int sebessegA, int sebessegB) {
+void drive(int motorSpeedLeft, int motorSpeedRight) {
   // Motor A irányának beállítása
-  if (sebessegA >= 0) {
+  if (motorSpeedLeft >= 0) {
     digitalWrite(IN1, HIGH);
     digitalWrite(IN2, LOW);
   } else {
     digitalWrite(IN1, LOW);
     digitalWrite(IN2, HIGH);
-    sebessegA = -sebessegA;
+    motorSpeedLeft = -motorSpeedLeft;
   }
 
   // Motor B irányának beállítása
-  if (sebessegB >= 0) {
+  if (motorSpeedRight >= 0) {
     digitalWrite(IN3, HIGH);
     digitalWrite(IN4, LOW);
   } else {
     digitalWrite(IN3, LOW);
     digitalWrite(IN4, HIGH);
-    sebessegB = -sebessegB;
+    motorSpeedRight = -motorSpeedRight;
   }
 
   // Motorok sebességének beállítása
-  analogWrite(ENA, sebessegA);
-  analogWrite(ENB, sebessegB);
+  analogWrite(ENA, motorSpeedLeft);
+  analogWrite(ENB, motorSpeedRight);
 }
 
 
 //TÁVOLSÁGMÉRÉS CM-BEN
-float measureDistance(int triggerPin, int echoPin) {
+double measureDistance(int triggerPin, int echoPin) {
   // Előkészítés
   pinMode(triggerPin, OUTPUT);
   pinMode(echoPin, INPUT);
@@ -131,7 +131,7 @@ float measureDistance(int triggerPin, int echoPin) {
   // Echo jel értelmezése
   long duration = pulseIn(echoPin, HIGH);
   // Távolság kiszámítása a hangsebesség alapján
-  float distance = duration * 0.034 / 2; // A hangsebesség 34 cm/ms, a távolságot pedig két irányban kell elosztani
+  double distance = duration * 0.034 / 2; // A hangsebesség 34 cm/ms, a távolságot pedig két irányban kell elosztani
   
   if(distance > 200){ //hibás mérést 0-ra állít mert valszeg túl közel értünk a falhoz.
     distance = 0;
@@ -181,7 +181,7 @@ void stop() {
 
 
 bool thereIsAWall(int direction){
-  float distance;
+  double distance;
   if(direction == 0){
     distance = measureDistance(TRIGGER_PIN_FRONT, ECHO_PIN_FRONT);
   }
@@ -194,15 +194,58 @@ bool thereIsAWall(int direction){
   if (distance >= -1 && distance <= 15) return true;
   else return false;
 }
+
+void PidDrive(double middleDistance){
+  input = middleDistance;
+
+  // Számold ki a PID szabályozó kimenetét
+  pid.Compute();
+
+  // Motorok vezérlése a PID kimenet alapján
+  int motorSpeedLeft = constrain(255 + output, 0, 255); // Bal motor sebessége
+  int motorSpeedRight = constrain(255 - output, 0, 255); // Jobb motor sebessége
+
+  // Motorok mozgatása
+  drive(motorSpeedLeft,motorSpeedRight);
+
+  //gyro pozíció mentése
+  mpu.update();
+  lastCorrectAngle = mpu.getAngleZ();
+
+  // Késleltetés a következő ciklusig
+  delay(100);
+}
+
 void forwardWithAlignment() {
+  double distanceFromSingleWall = 15; //hány cm-re van a fal ha csak egyhez igazodik
   //mindkét oldalt van fal
   if(thereIsAWall(1) && thereIsAWall(2)){
+    double rightDistance = measureDistance(TRIGGER_PIN_RIGHT, ECHO_PIN_RIGHT);
+    double leftDistance = measureDistance(TRIGGER_PIN_LEFT, ECHO_PIN_LEFT);
+
+    // Számold ki a középső távolságot a jobb és bal oldali távolságok alapján
+    double middleDistance = (rightDistance - leftDistance) / 2.0;
+
+    PidDrive(middleDistance);
   }
   //balra van csak fal
   if(thereIsAWall(1) && !thereIsAWall(2)){
+    double leftDistance = measureDistance(TRIGGER_PIN_LEFT, ECHO_PIN_LEFT);
+
+    // Számold ki a középső távolságot a jobb és bal oldali távolságok alapján
+    double middleDistance = (distanceFromSingleWall - leftDistance) / 2.0;
+    
+    PidDrive(middleDistance);
   }
   //jobbra van csak fal
   if(!thereIsAWall(1) && thereIsAWall(2)){
+    double rightDistance = measureDistance(TRIGGER_PIN_RIGHT, ECHO_PIN_RIGHT);
+    
+
+    // Számold ki a középső távolságot a jobb és bal oldali távolságok alapján
+    double middleDistance = (rightDistance - distanceFromSingleWall) / 2.0;
+
+    PidDrive(middleDistance);
   }
   //Nincs fal mellette
   else{
