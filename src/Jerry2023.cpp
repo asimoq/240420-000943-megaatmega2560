@@ -7,6 +7,13 @@
 #include "Wire.h"
 #include <PID_v1.h>
 
+//a forráskódban irányok megjelölésére gyakran használatban van a 0 1 2 számozás
+//0-egyenesen
+//1-balra
+//2-jobbra
+
+
+//gyro
 MPU6050 mpu(Wire);
 unsigned long timer = 0;
 
