@@ -16,6 +16,7 @@
 //gyro
 MPU6050 mpu(Wire);
 unsigned long timer = 0;
+float lastCorrectAngle = 0;
 
 //ultrahangos pinek
 #define TRIGGER_PIN_FRONT 2
@@ -38,7 +39,9 @@ unsigned long timer = 0;
 // PID változók
 double setpoint = 0; // Kívánt érték
 double input, output;
-double Kp = 2, Ki = 5, Kd = 1; // PID tényezők
+double Kp = 1, Ki = 0.1, Kd = 0.1; // PID tényezők
+
+
 
 PID pid(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
 
@@ -148,7 +151,7 @@ void forward() {
 void backward() {
   drive(-80,-80);
 }
-// Balra fordulás
+// Balra fordulás 90 fok
 void turnLeft() {
   mpu.update();
   float angle = mpu.getAngleZ();
@@ -157,9 +160,11 @@ void turnLeft() {
     mpu.update();
   }
   stop();
+  mpu.update();
+  lastCorrectAngle = mpu.getAngleZ();
 }
 
-// Jobbra fordulás
+// Jobbra fordulás 90 fok
 void turnRight() {
   mpu.update();
   float angle = mpu.getAngleZ();
@@ -167,6 +172,8 @@ void turnRight() {
   while(mpu.getAngleZ() >= angle-90){ // lehet több vagy kevesebb a kívánt fok
     mpu.update();
   }
+  mpu.update();
+  lastCorrectAngle = mpu.getAngleZ();
 }
 
 // Megállás
@@ -361,13 +368,11 @@ void loop() {
     
     // Fal érzékelése, fordulás az irányban, ahol több hely van
     if (measureDistance(TRIGGER_PIN_LEFT, ECHO_PIN_LEFT) > measureDistance(TRIGGER_PIN_RIGHT, ECHO_PIN_RIGHT)) {
-      // Balra fordulás, mert több hely van jobbra
       backward();
       delay(500);
       turnLeft();
       
     } else {
-      // Jobbra fordulás, mert több hely van balra
       backward();
       delay(500);
       turnRight();
