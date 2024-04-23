@@ -11,6 +11,10 @@
 //0-egyenesen
 //1-balra
 //2-jobbra
+#define DIRECTION_FRONT 0
+#define DIRECTION_LEFT 1
+#define DIRECTION_RIGHT 2
+
 
 
 //gyro
