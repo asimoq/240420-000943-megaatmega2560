@@ -1,5 +1,5 @@
 #include <Arduino.h>
-#include <MPU6050_light.h>
+#include <MPU6050_light.h> //gyro könyvtár
 #include <SPI.h>
 #include <MFRC522.h>
 #include <string.h>
@@ -8,15 +8,11 @@
 #include <PID_v1.h>
 
 //a forráskódban irányok megjelölésére gyakran használatban van a 0 1 2 számozás
-//0-egyenesen
-//1-balra
-//2-jobbra
-#define DIRECTION_FRONT 0
-#define DIRECTION_LEFT 1
-#define DIRECTION_RIGHT 2
-
-
-
+#define DIRECTION_FRONT 0 //0-egyenesen
+#define DIRECTION_LEFT 1  //1-balra
+#define DIRECTION_RIGHT 2 //2-jobbra
+#define DIRECTION_STOP 3 //megállás
+ 
 //gyro
 MPU6050 mpu(Wire);
 unsigned long timer = 0;
@@ -31,12 +27,10 @@ float lastCorrectAngle = 0;
 #define ECHO_PIN_LEFT 7
 
 //motor pinek
-//bal
-#define ENA 11
+#define ENA 11 //bal
 #define IN1 29
 #define IN2 27
-//jobb
-#define IN3 25
+#define IN3 25 //jobb
 #define IN4 23
 #define ENB 10
 
@@ -44,17 +38,15 @@ float lastCorrectAngle = 0;
 double setpoint = 0; // Kívánt érték
 double input, output;
 double Kp = 1, Ki = 0.1, Kd = 0.1; // PID tényezők
-
-
-
 PID pid(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
 
+//RFID CONFIG
 #define RST_PIN 8
 #define SS_PIN 9
-
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 MFRC522::MIFARE_Key key;
 
+//robot inicializálása
 void setup() {
   Serial.begin(9600);
   //gyro beállítása
@@ -121,7 +113,6 @@ void drive(int motorSpeedLeft, int motorSpeedRight) {
   analogWrite(ENB, motorSpeedRight);
 }
 
-
 //TÁVOLSÁGMÉRÉS CM-BEN
 double measureDistance(int triggerPin, int echoPin) {
   // Előkészítés
@@ -155,6 +146,7 @@ void forward() {
 void backward() {
   drive(-80,-80);
 }
+
 // Balra fordulás 90 fok
 void turnLeft() {
 
@@ -195,7 +187,7 @@ void stop() {
   analogWrite(ENB, 0);
 }
 
-
+//Eldönti hogy az adott irányban van e fal 0cm és 15cm között. Irányt és egy távoságok tömböt vár
 bool thereIsAWall(int direction, double distances[]){
   double singleDistance;
   singleDistance= distances[direction];
@@ -203,15 +195,16 @@ bool thereIsAWall(int direction, double distances[]){
   else return false;
 }
 
-void PidDrive(double distanceFromMiddle){
+//PID alapján beállítja a motorok sebességét
+void PidDrive(double distanceFromMiddle, int maxSpeed){
   input = distanceFromMiddle;
 
   // Számold ki a PID szabályozó kimenetét
   pid.Compute();
 
   // Motorok vezérlése a PID kimenet alapján
-  int motorSpeedLeft = constrain(255 + output, 0, 255); // Bal motor sebessége
-  int motorSpeedRight = constrain(255 - output, 0, 255); // Jobb motor sebessége
+  int motorSpeedLeft = constrain(maxSpeed + output, 0, 255); // Bal motor sebessége
+  int motorSpeedRight = constrain(maxSpeed - output, 0, 255); // Jobb motor sebessége
 
   // Motorok mozgatása
   drive(motorSpeedLeft,motorSpeedRight);
@@ -221,9 +214,10 @@ void PidDrive(double distanceFromMiddle){
   lastCorrectAngle = mpu.getAngleZ();
 
   // Késleltetés a következő ciklusig
-  delay(100);
+  delay(50);
 }
 
+//feltölt egy double tömböt távolságokkal - előre, balra és jobbra mér
 double* measureDistanceAllDirections(){
   double* distances = new double[3];
   distances[DIRECTION_FRONT] = measureDistance(TRIGGER_PIN_FRONT, ECHO_PIN_FRONT);
@@ -234,9 +228,8 @@ double* measureDistanceAllDirections(){
   return distances;
 }
 
-
-
-void forwardWithAlignment() {
+//összetett függvény ami a körülötte lévő falak számától függően középre rendezi a robotot miközben előrefele halad. 
+void forwardWithAlignment(int maxSpeed) {
   double distanceFromSingleWall = 15; //hány cm-re van a fal ha csak egyhez igazodik
   //falak mérése
   double* distances = measureDistanceAllDirections();
@@ -247,7 +240,7 @@ void forwardWithAlignment() {
     // Számold ki a középső távolságot a jobb és bal oldali távolságok alapján
     double distanceFromMiddle = (distances[DIRECTION_RIGHT] - distances[DIRECTION_LEFT]) / 2.0;
 
-    PidDrive(distanceFromMiddle);
+    PidDrive(distanceFromMiddle, maxSpeed);
   }
   //balra van csak fal
   if(thereIsAWall(DIRECTION_LEFT, distances) && !thereIsAWall(DIRECTION_RIGHT, distances)){
@@ -255,7 +248,7 @@ void forwardWithAlignment() {
     // Számold ki a középső távolságot a jobb és bal oldali távolságok alapján
     double distanceFromMiddle = (distanceFromSingleWall - distances[DIRECTION_LEFT]) / 2.0;
     
-    PidDrive(distanceFromMiddle);
+    PidDrive(distanceFromMiddle, maxSpeed);
   }
   //jobbra van csak fal
   if(!thereIsAWall(DIRECTION_LEFT, distances) && thereIsAWall(DIRECTION_RIGHT, distances)){
@@ -263,19 +256,19 @@ void forwardWithAlignment() {
     // Számold ki a középső távolságot a jobb és bal oldali távolságok alapján
     double distanceFromMiddle = (distances[DIRECTION_RIGHT] - distanceFromSingleWall) / 2.0;
 
-    PidDrive(distanceFromMiddle);
+    PidDrive(distanceFromMiddle, maxSpeed);
   }
   //Nincs fal mellette
   else{
     mpu.update();
     float angle = mpu.getAngleZ();
     double distanceFromMiddle = (lastCorrectAngle - angle) / 2.0; //gyro alapján egyenesen a legutóbbi helyezkedéstől(falhoz igazítás vagy fordulás) számolva tartja a szöget elvileg :D
-    PidDrive(distanceFromMiddle);
+    PidDrive(distanceFromMiddle, maxSpeed);
   }
 
 }
 
-//RFID kártya 0, 1, 2, 3-vége outputtal
+//RFID kártya direction outputtal
 int rfidToDirection(){
   if (mfrc522.PICC_IsNewCardPresent()) {
     if (mfrc522.PICC_ReadCardSerial()) {
@@ -297,22 +290,20 @@ int rfidToDirection(){
       // Kártya adatok alapján műveletek végrehajtása
       if (cardData.substring (4,8) == "bc 0") {
         Serial.print("fordulas balra");
-        return 1;
+        return DIRECTION_LEFT;
       } else if (cardData.substring (4,8) == "bc f") {
         Serial.print("fordulas jobbra");
-        return 2;
+        return DIRECTION_RIGHT;
       } else if (cardData.substring (4,8) == "bc 5") {
         Serial.print("palya vege");
-        return 3;
+        return DIRECTION_STOP;
       }
     }
   }
   return 0;
 }
   
-
-
-
+//main loop. ezt ismétli a robot.
 void loop() {
   // put your main code here, to run repeatedly:
   //gyro update
