@@ -157,18 +157,23 @@ void backward() {
 }
 // Balra fordulás 90 fok
 void turnLeft() {
-  mpu.update();
-  float angle = mpu.getAngleZ();
-  drive(-80,80);
-  while(mpu.getAngleZ() <= angle+90){ // lehet több vagy kevesebb a kívánt fok
-    mpu.update();
+
+  mpu.update();                   //gyro frissítése
+  float angle = mpu.getAngleZ();  //gyro mérése és aktuális állapot mentése
+
+  drive(-80,80); //fordulás megkezdése
+  
+  while(mpu.getAngleZ() <= angle+90){ //várakozás amíg el nem értük a kívánt fokot. lehet több vagy kevesebb a kívánt fok.
+    mpu.update(); //gyro frissítés
   }
-  stop();
+  stop();   //leállítás mert elértük a kívánt fokot
+  
+  //jelenlegi helyzet elmentése egy globális változóba. Ezt a helyzetet használjuk egyenesen haladáshoz amennyiben nincsenek falak.
   mpu.update();
   lastCorrectAngle = mpu.getAngleZ();
 }
 
-// Jobbra fordulás 90 fok
+// Jobbra fordulás 90 fok. Magyarázatért look up turnLeft()
 void turnRight() {
   mpu.update();
   float angle = mpu.getAngleZ();
@@ -191,23 +196,15 @@ void stop() {
 }
 
 
-bool thereIsAWall(int direction){
-  double distance;
-  if(direction == 0){
-    distance = measureDistance(TRIGGER_PIN_FRONT, ECHO_PIN_FRONT);
-  }
-  else if(direction == 1){
-    distance = measureDistance(TRIGGER_PIN_LEFT, ECHO_PIN_LEFT);
-  }
-  else{
-    distance = measureDistance(TRIGGER_PIN_RIGHT, ECHO_PIN_RIGHT);
-  }
-  if (distance >= -1 && distance <= 15) return true;
+bool thereIsAWall(int direction, double distances[]){
+  double singleDistance;
+  singleDistance= distances[direction];
+  if (singleDistance >= -1 && singleDistance <= 15) return true;
   else return false;
 }
 
-void PidDrive(double middleDistance){
-  input = middleDistance;
+void PidDrive(double distanceFromMiddle){
+  input = distanceFromMiddle;
 
   // Számold ki a PID szabályozó kimenetét
   pid.Compute();
@@ -219,7 +216,7 @@ void PidDrive(double middleDistance){
   // Motorok mozgatása
   drive(motorSpeedLeft,motorSpeedRight);
 
-  //gyro pozíció mentése
+  //jelenlegi helyzet elmentése egy globális változóba. Ezt a helyzetet használjuk egyenesen haladáshoz amennyiben nincsenek falak.
   mpu.update();
   lastCorrectAngle = mpu.getAngleZ();
 
@@ -227,43 +224,53 @@ void PidDrive(double middleDistance){
   delay(100);
 }
 
+double* measureDistanceAllDirections(){
+  double* distances = new double[3];
+  distances[DIRECTION_FRONT] = measureDistance(TRIGGER_PIN_FRONT, ECHO_PIN_FRONT);
+  delay(5); //5ms késleltetés, hogy ne legyen interferencia
+  distances[DIRECTION_LEFT] = measureDistance(TRIGGER_PIN_LEFT, ECHO_PIN_LEFT);
+  delay(5); //5ms késleltetés, hogy ne legyen interferencia
+  distances[DIRECTION_RIGHT] = measureDistance(TRIGGER_PIN_RIGHT, ECHO_PIN_RIGHT);
+  return distances;
+}
+
+
+
 void forwardWithAlignment() {
   double distanceFromSingleWall = 15; //hány cm-re van a fal ha csak egyhez igazodik
+  //falak mérése
+  double* distances = measureDistanceAllDirections();
+  
   //mindkét oldalt van fal
-  if(thereIsAWall(1) && thereIsAWall(2)){
-    double rightDistance = measureDistance(TRIGGER_PIN_RIGHT, ECHO_PIN_RIGHT);
-    double leftDistance = measureDistance(TRIGGER_PIN_LEFT, ECHO_PIN_LEFT);
+  if(thereIsAWall(DIRECTION_LEFT, distances) && thereIsAWall(DIRECTION_RIGHT, distances)){
 
     // Számold ki a középső távolságot a jobb és bal oldali távolságok alapján
-    double middleDistance = (rightDistance - leftDistance) / 2.0;
+    double distanceFromMiddle = (distances[DIRECTION_RIGHT] - distances[DIRECTION_LEFT]) / 2.0;
 
-    PidDrive(middleDistance);
+    PidDrive(distanceFromMiddle);
   }
   //balra van csak fal
-  if(thereIsAWall(1) && !thereIsAWall(2)){
-    double leftDistance = measureDistance(TRIGGER_PIN_LEFT, ECHO_PIN_LEFT);
+  if(thereIsAWall(DIRECTION_LEFT, distances) && !thereIsAWall(DIRECTION_RIGHT, distances)){
 
     // Számold ki a középső távolságot a jobb és bal oldali távolságok alapján
-    double middleDistance = (distanceFromSingleWall - leftDistance) / 2.0;
+    double distanceFromMiddle = (distanceFromSingleWall - distances[DIRECTION_LEFT]) / 2.0;
     
-    PidDrive(middleDistance);
+    PidDrive(distanceFromMiddle);
   }
   //jobbra van csak fal
-  if(!thereIsAWall(1) && thereIsAWall(2)){
-    double rightDistance = measureDistance(TRIGGER_PIN_RIGHT, ECHO_PIN_RIGHT);
-    
+  if(!thereIsAWall(DIRECTION_LEFT, distances) && thereIsAWall(DIRECTION_RIGHT, distances)){
 
     // Számold ki a középső távolságot a jobb és bal oldali távolságok alapján
-    double middleDistance = (rightDistance - distanceFromSingleWall) / 2.0;
+    double distanceFromMiddle = (distances[DIRECTION_RIGHT] - distanceFromSingleWall) / 2.0;
 
-    PidDrive(middleDistance);
+    PidDrive(distanceFromMiddle);
   }
   //Nincs fal mellette
   else{
     mpu.update();
     float angle = mpu.getAngleZ();
-    double middleDistance = (lastCorrectAngle - angle) / 2.0; //gyro alapján egyenesen a legutóbbi helyezkedéstől(flhoz igazítás vagy fordulás) számolva tartja a szöget elvileg :D
-    PidDrive(middleDistance);
+    double distanceFromMiddle = (lastCorrectAngle - angle) / 2.0; //gyro alapján egyenesen a legutóbbi helyezkedéstől(falhoz igazítás vagy fordulás) számolva tartja a szöget elvileg :D
+    PidDrive(distanceFromMiddle);
   }
 
 }
