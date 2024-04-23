@@ -305,7 +305,7 @@ int rfidToDirection(){
   
 //main loop. ezt ismétli a robot.
 void loop() {
-  // put your main code here, to run repeatedly:
+  /* // put your main code here, to run repeatedly:
   //gyro update
   mpu.update();
   // RFID kártyaolvasó ellenőrzése
@@ -383,5 +383,5 @@ void loop() {
   } else {
     // Nincs fal az előtt, előre megyünk középre igazítással
     forwardWithAlignment();
-  }
+  } */
 }
