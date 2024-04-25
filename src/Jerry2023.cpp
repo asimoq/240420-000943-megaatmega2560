@@ -19,20 +19,20 @@ unsigned long timer = 0;
 float lastCorrectAngle = 0;
 
 //ultrahangos pinek
-#define TRIGGER_PIN_FRONT 2
-#define ECHO_PIN_FRONT 3
-#define TRIGGER_PIN_RIGHT 4
-#define ECHO_PIN_RIGHT 5
-#define TRIGGER_PIN_LEFT 6
-#define ECHO_PIN_LEFT 7
+#define TRIGGER_PIN_FRONT A2
+#define ECHO_PIN_FRONT A3
+#define TRIGGER_PIN_RIGHT A0
+#define ECHO_PIN_RIGHT A1
+#define TRIGGER_PIN_LEFT A4
+#define ECHO_PIN_LEFT A5
 
 //motor pinek
-#define ENA 11 //bal
-#define IN1 29
-#define IN2 27
-#define IN3 25 //jobb
-#define IN4 23
-#define ENB 10
+#define ENA 6 //bal
+#define IN1 7
+#define IN2 8
+#define IN3 3 //jobb
+#define IN4 4
+#define ENB 5
 
 // PID változók
 double setpoint = 0; // Kívánt érték
@@ -84,6 +84,8 @@ void setup() {
   for (byte i = 0; i < 6; i++) {
     key.keyByte[i] = 0xFF;
   }
+
+  pid.SetMode(AUTOMATIC);
 }
 
 // motorbeállítás
@@ -262,7 +264,7 @@ void forwardWithAlignment(int maxSpeed) {
     PidDrive(distanceFromMiddle, maxSpeed, true);
   }
   //Nincs fal mellette 
-  else{
+  if(!thereIsAWall(DIRECTION_LEFT, distances) && !thereIsAWall(DIRECTION_RIGHT, distances)){
     mpu.update();
     float angle = mpu.getAngleZ();
     double error = (lastCorrectAngle - angle) / 2.0; //gyro alapján egyenesen a legutóbbi helyezkedéstől(falhoz igazítás vagy fordulás) számolva tartja a szöget elvileg :D
@@ -308,6 +310,16 @@ int rfidToDirection(){
   
 //main loop. ezt ismétli a robot.
 void loop() {
+  if (measureDistance(TRIGGER_PIN_FRONT, ECHO_PIN_FRONT) > 10)
+  {
+    forwardWithAlignment(80);
+    /* code */
+  }
+  else
+  {
+    forwardWithAlignment(0);
+  }
+  
   /* // put your main code here, to run repeatedly:
   //gyro update
   mpu.update();
