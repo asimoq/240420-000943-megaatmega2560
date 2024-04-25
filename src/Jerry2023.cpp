@@ -26,6 +26,8 @@ float lastCorrectAngle = 0;
 #define TRIGGER_PIN_LEFT A4
 #define ECHO_PIN_LEFT A5
 
+double distances[3];
+
 //motor pinek
 #define ENA 6 //bal
 #define IN1 7
@@ -117,26 +119,41 @@ void drive(int motorSpeedLeft, int motorSpeedRight) {
 
 //TÁVOLSÁGMÉRÉS CM-BEN
 double measureDistance(int triggerPin, int echoPin) {
-  // Előkészítés
-  pinMode(triggerPin, OUTPUT);
-  pinMode(echoPin, INPUT);
-  digitalWrite(triggerPin, LOW);
-  delayMicroseconds(2);
+  double measurements[3];
+  for (size_t i = 0; i < 3; i++)
+  {
+    pinMode(triggerPin, OUTPUT);
+    pinMode(echoPin, INPUT);
+    digitalWrite(triggerPin, LOW);
+    delayMicroseconds(2);
 
-  // Trigger jel küldése
-  digitalWrite(triggerPin, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(triggerPin, LOW);
+    // Trigger jel küldése
+    digitalWrite(triggerPin, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(triggerPin, LOW);
 
-  // Echo jel értelmezése
-  long duration = pulseIn(echoPin, HIGH);
-  // Távolság kiszámítása a hangsebesség alapján
-  double distance = duration * 0.034 / 2; // A hangsebesség 34 cm/ms, a távolságot pedig két irányban kell elosztani
-  
-  if(distance > 200){ //hibás mérést 0-ra állít mert valszeg túl közel értünk a falhoz.
-    distance = 0;
+    // Echo jel értelmezése
+    long duration = pulseIn(echoPin, HIGH);
+    // Távolság kiszámítása a hangsebesség alapján
+    measurements[i] = duration * 0.034 / 2;
+    delay(50);
+  }
+  double distance;
+  double min = abs(measurements[0]-measurements[1]);
+  distance = (measurements[0]+measurements[1])/2;
+  double second = abs(measurements[1]-measurements[2]);
+  double third = abs(measurements[2]-measurements[0]);
+  if(min > second)
+  {
+    min = second;
+    distance = (measurements[1]+measurements[2])/2;
+  }
+  if(min > third)
+  {
+    distance = (measurements[2]+measurements[0])/2;
   }
   return distance;
+  
 }
 
 // Előre haladás
@@ -147,6 +164,16 @@ void forward() {
 // Hátramenet
 void backward() {
   drive(-80,-80);
+}
+
+// Megállás
+void stop() {
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, LOW);
+  analogWrite(ENA, 0);
+  analogWrite(ENB, 0);
 }
 
 // Balra fordulás 90 fok
@@ -179,21 +206,11 @@ void turnRight() {
   lastCorrectAngle = mpu.getAngleZ();
 }
 
-// Megállás
-void stop() {
-  digitalWrite(IN1, LOW);
-  digitalWrite(IN2, LOW);
-  digitalWrite(IN3, LOW);
-  digitalWrite(IN4, LOW);
-  analogWrite(ENA, 0);
-  analogWrite(ENB, 0);
-}
-
 //Eldönti hogy az adott irányban van e fal 0cm és 15cm között. Irányt és egy távoságok tömböt vár
 bool thereIsAWall(int direction, double distances[]){
   double singleDistance;
   singleDistance= distances[direction];
-  if (singleDistance >= -1 && singleDistance <= 15) return true;
+  if (singleDistance >= 1 && singleDistance <= 15) return true;
   else return false;
 }
 
@@ -223,21 +240,17 @@ void PidDrive(double distanceFromMiddle, int maxSpeed, bool isThereAWall){
 }
 
 //feltölt egy double tömböt távolságokkal - előre, balra és jobbra mér
-double* measureDistanceAllDirections(){
-  double* distances = new double[3];
+void measureDistanceAllDirections(){
   distances[DIRECTION_FRONT] = measureDistance(TRIGGER_PIN_FRONT, ECHO_PIN_FRONT);
-  delay(5); //5ms késleltetés, hogy ne legyen interferencia
   distances[DIRECTION_LEFT] = measureDistance(TRIGGER_PIN_LEFT, ECHO_PIN_LEFT);
-  delay(5); //5ms késleltetés, hogy ne legyen interferencia
   distances[DIRECTION_RIGHT] = measureDistance(TRIGGER_PIN_RIGHT, ECHO_PIN_RIGHT);
-  return distances;
 }
 
 //összetett függvény ami a körülötte lévő falak számától függően középre rendezi a robotot miközben előrefele halad. 
 void forwardWithAlignment(int maxSpeed) {
   double distanceFromSingleWall = 15; //hány cm-re van a fal ha csak egyhez igazodik
   //falak mérése
-  double* distances = measureDistanceAllDirections();
+  measureDistanceAllDirections();
   
   //mindkét oldalt van fal
   if(thereIsAWall(DIRECTION_LEFT, distances) && thereIsAWall(DIRECTION_RIGHT, distances)){
