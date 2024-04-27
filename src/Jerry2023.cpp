@@ -347,7 +347,7 @@ void loop() {
   Serial.println(distances[DIRECTION_RIGHT]);
   if (distances[DIRECTION_FRONT] > 15)
   {
-    forwardWithAlignment(100); //100 kb jó
+    forwardWithAlignment(70);
     /* code */
   }
   else
