@@ -39,7 +39,7 @@ double distances[3];
 // PID változók
 double setpoint = 0; // Kívánt érték
 double input, output;
-double Kp = 3, Ki = 0.2, Kd = 1; // PID tényezők
+double Kp = 8, Ki = 0.01, Kd = 5; // PID tényezők
 PID pid(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
 
 //RFID CONFIG
@@ -89,6 +89,9 @@ void setup() {
 
   pid.SetMode(AUTOMATIC);
   pid.SetOutputLimits(-255,255);
+
+  mpu.update();
+  lastCorrectAngle = mpu.getAngleZ();
 }
 
 // motorbeállítás
@@ -167,8 +170,12 @@ double measureDistance(int triggerPin, int echoPin) {
 
   // Echo jel értelmezése
   long duration = pulseIn(echoPin, HIGH);
+  if(triggerPin == TRIGGER_PIN_RIGHT) Serial.println(duration);
+  if(duration > 20000) duration = 0;
+  if(duration == 0) return 0;
   // Távolság kiszámítása a hangsebesség alapján
   return duration * 0.034 / 2;
+  
 
   
 }
@@ -227,7 +234,7 @@ void turnRight() {
 bool thereIsAWall(int direction, double distances[]){
   double singleDistance;
   singleDistance= distances[direction];
-  if (singleDistance >= 1 && singleDistance <= 30) return true;
+  if (singleDistance >= 1 && singleDistance <= 22) return true; //22 kb jó
   else return false;
 }
 
@@ -239,16 +246,15 @@ void PidDrive(double distanceFromMiddle, int maxSpeed, bool isThereAWall){
   pid.Compute();
 
   // Motorok vezérlése a PID kimenet alapján
-  int motorSpeedLeft = constrain(maxSpeed - output, 0, 255); // Bal motor sebessége
-  int motorSpeedRight = constrain(maxSpeed + output, 0, 255); // Jobb motor sebessége
+  int motorSpeedLeft = constrain(maxSpeed - output, -255, 255); // Bal motor sebessége
+  int motorSpeedRight = constrain(maxSpeed + output, -255, 255); // Jobb motor sebessége
 
   // Motorok mozgatása
   drive(motorSpeedLeft,motorSpeedRight);
 
   //jelenlegi helyzet elmentése egy globális változóba. Ezt a helyzetet használjuk egyenesen haladáshoz amennyiben nincsenek falak.
   if(isThereAWall){
-    mpu.update();
-      lastCorrectAngle = mpu.getAngleZ();
+    lastCorrectAngle = mpu.getAngleZ();
   }
 }
 
@@ -261,15 +267,7 @@ void measureDistanceAllDirections(){
 
 //összetett függvény ami a körülötte lévő falak számától függően középre rendezi a robotot miközben előrefele halad. 
 void forwardWithAlignment(int maxSpeed) {
-  double distanceFromSingleWall = 15; //hány cm-re van a fal ha csak egyhez igazodik
-  //falak mérése
-  measureDistanceAllDirections();
-  Serial.print(distances[DIRECTION_LEFT]),
-  Serial.print(" ");
-  Serial.print(distances[DIRECTION_FRONT]),
-  Serial.print(" ");
-  Serial.println(distances[DIRECTION_RIGHT]);
-  
+  double distanceFromSingleWall = 11; //hány cm-re van a fal ha csak egyhez igazodik
   //mindkét oldalt van fal
   if(thereIsAWall(DIRECTION_LEFT, distances) && thereIsAWall(DIRECTION_RIGHT, distances)){
 
@@ -296,9 +294,8 @@ void forwardWithAlignment(int maxSpeed) {
   }
   //Nincs fal mellette 
   if(!thereIsAWall(DIRECTION_LEFT, distances) && !thereIsAWall(DIRECTION_RIGHT, distances)){
-    mpu.update();
     float angle = mpu.getAngleZ();
-    double error = (angle -lastCorrectAngle) / 2.0; //gyro alapján egyenesen a legutóbbi helyezkedéstől(falhoz igazítás vagy fordulás) számolva tartja a szöget elvileg :D
+    double error = (angle -lastCorrectAngle) * 0.07; //gyro alapján egyenesen a legutóbbi helyezkedéstől(falhoz igazítás vagy fordulás) számolva tartja a szöget elvileg :D
     PidDrive(error, maxSpeed, false);
   }
 
@@ -341,15 +338,21 @@ int rfidToDirection(){
   
 //main loop. ezt ismétli a robot.
 void loop() {
-    if (measureDistance(TRIGGER_PIN_FRONT, ECHO_PIN_FRONT) > 15)
+  measureDistanceAllDirections();
+  mpu.update();
+  Serial.print(distances[DIRECTION_LEFT]),
+  Serial.print(" ");
+  Serial.print(distances[DIRECTION_FRONT]),
+  Serial.print(" ");
+  Serial.println(distances[DIRECTION_RIGHT]);
+  if (measureDistance(TRIGGER_PIN_FRONT, ECHO_PIN_FRONT) > 15)
   {
-    forwardWithAlignment(70);
+    forwardWithAlignment(100); //100 kb jó
     /* code */
   }
   else
   {
-    drive(60,-90);
-    delay(150);
+    drive(0,0);
   }
   
   
