@@ -27,6 +27,8 @@ float lastCorrectAngle = 0;
 #define ECHO_PIN_LEFT A5
 
 double distances[3];
+int commands[256];
+int currentCommand;
 
 //motor pinek
 #define ENA 6 //bal
@@ -92,6 +94,9 @@ void setup() {
 
   mpu.update();
   lastCorrectAngle = mpu.getAngleZ();
+
+  commands[0] = 0;
+  currentCommand = 0;
 }
 
 // motorbeállítás
@@ -123,41 +128,7 @@ void drive(int motorSpeedLeft, int motorSpeedRight) {
 
 //TÁVOLSÁGMÉRÉS CM-BEN
 double measureDistance(int triggerPin, int echoPin) {
-  /* double measurements[3];
-  for (size_t i = 0; i < 3; i++)
-  {
-    pinMode(triggerPin, OUTPUT);
-    pinMode(echoPin, INPUT);
-    digitalWrite(triggerPin, LOW);
-    delayMicroseconds(2);
-
-    // Trigger jel küldése
-    digitalWrite(triggerPin, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(triggerPin, LOW);
-
-    // Echo jel értelmezése
-    long duration = pulseIn(echoPin, HIGH);
-    // Távolság kiszámítása a hangsebesség alapján
-    measurements[i] = duration * 0.034 / 2;
-    
-  }
-  double distance;
-  double min = abs(measurements[0]-measurements[1]);
-  distance = (measurements[0]+measurements[1])/2;
-  double second = abs(measurements[1]-measurements[2]);
-  double third = abs(measurements[2]-measurements[0]);
-  if(min > second)
-  {
-    min = second;
-    distance = (measurements[1]+measurements[2])/2;
-  }
-  if(min > third)
-  {
-    distance = (measurements[2]+measurements[0])/2;
-  }
-  return distance; */
-
+  
   pinMode(triggerPin, OUTPUT);
   pinMode(echoPin, INPUT);
   digitalWrite(triggerPin, LOW);
@@ -338,7 +309,7 @@ int rfidToDirection(){
   
 //main loop. ezt ismétli a robot.
 void loop() {
-  measureDistanceAllDirections();
+  /* measureDistanceAllDirections();
   mpu.update();
   Serial.print(distances[DIRECTION_LEFT]),
   Serial.print(" ");
@@ -348,92 +319,52 @@ void loop() {
   if (distances[DIRECTION_FRONT] > 15)
   {
     forwardWithAlignment(100);
-    /* code */
   }
   else
   {
     drive(0,0);
-  }
-  
-  
-  
-  /* // put your main code here, to run repeatedly:
-  //gyro update
-  mpu.update();
-  // RFID kártyaolvasó ellenőrzése
-  if (mfrc522.PICC_IsNewCardPresent()) {
-    if (mfrc522.PICC_ReadCardSerial()) {
-      // RFID kártya adatok kiolvasása
-      String cardData = "";
-      for (byte i = 0; i < mfrc522.uid.size; i++) {
-        cardData += (String)(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " ");
-        cardData += String(mfrc522.uid.uidByte[i], HEX);
-      }
-      Serial.print("Sima: ");
-      Serial.print(cardData);
-      Serial.println();
-      String vagott = cardData.substring (4,8);
-      Serial.print("vagott: ");
-      Serial.print(vagott);
-      Serial.println();
-      
+  } */
 
-      // Kártya adatok alapján műveletek végrehajtása
-      if (cardData.substring (4,8) == "bc 0") {
-        Serial.print("fordulas balra: ");
-        forwardWithAlignment();
-        
-        delay(200);
-        stop();
-        delay(100);
-        turnLeft();
-        
-      } else if (cardData.substring (4,8) == "bc f") {
-        Serial.print("fordulas jobbra: ");
-        forwardWithAlignment();
-        
-        delay(200);
-        stop();
-        delay(100);
-        turnRight();
-        
-      } else if (cardData.substring (4,8) == "bc 5") {
-        // Program kilépése
-        stop();
-        while (true) {
-          // Végtelen ciklusban várakozás
+  while (true)
+  {
+    measureDistanceAllDirections();
+    double frontDistanceAtTileCenter = distances[DIRECTION_FRONT];
+    int newCommand = 0;
+    bool thereWasANewCommand = false;
+    if(commands[currentCommand] == DIRECTION_LEFT){
+      turnLeft();
+      delay(1000);
+    }
+    if(commands[currentCommand] == DIRECTION_RIGHT){
+      turnRight();
+      delay(1000);
+    }
+    currentCommand++;
+    while(distances[DIRECTION_FRONT] > frontDistanceAtTileCenter-28.5){
+      measureDistanceAllDirections();
+      if(!thereWasANewCommand){
+        newCommand = rfidToDirection();
+        if(newCommand != 0){
+          commands[currentCommand] = newCommand;
+          thereWasANewCommand = true;
         }
       }
+      forwardWithAlignment(100);
     }
-  }
-
-  // Első távérzékelő mérése cm-ben
-  float frontDistance = measureDistance(TRIGGER_PIN_FRONT, ECHO_PIN_FRONT);
-  //Serial.println(frontDistance);
-  
-  if (frontDistance <= 5){
     stop();
-    
-    while(true){}
-  }
-  // Fal érzékelése az első távérzékelővel
-  if (frontDistance <= 15) {
-    
-    
-    // Fal érzékelése, fordulás az irányban, ahol több hely van
-    if (measureDistance(TRIGGER_PIN_LEFT, ECHO_PIN_LEFT) > measureDistance(TRIGGER_PIN_RIGHT, ECHO_PIN_RIGHT)) {
-      backward();
-      delay(500);
-      turnLeft();
-      
-    } else {
-      backward();
-      delay(500);
-      turnRight();
-      
+    if(commands[currentCommand] == 0){
+      if(distances[DIRECTION_FRONT] < 28.5){
+        if(distances[DIRECTION_LEFT] > distances[DIRECTION_RIGHT]){
+          commands[currentCommand] = DIRECTION_LEFT;
+        }
+        else{
+          commands[currentCommand] = DIRECTION_RIGHT;
+        }
+      }
+      else{
+        commands[currentCommand] = DIRECTION_FRONT;
+      }
     }
-  } else {
-    // Nincs fal az előtt, előre megyünk középre igazítással
-    forwardWithAlignment();
-  } */
+    delay(1000);
+  }
 }
