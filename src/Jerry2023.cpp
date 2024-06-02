@@ -29,19 +29,20 @@ float lastCorrectAngle = 0;
 double distances[3];
 int commands[256];
 int currentCommand;
+double howFareAreWeFromDestinacion;
 
 //motor pinek
 #define ENA 6 //bal
-#define IN1 7
-#define IN2 8
-#define IN3 3 //jobb
-#define IN4 4
+#define IN1 10
+#define IN2 7
+#define IN3 4 //jobb
+#define IN4 3
 #define ENB 5
 
-// PID változók
+// PID változók   //100 hoz egsz okes: 8 0.01 5 //60hoz: 
 double setpoint = 0; // Kívánt érték
 double input, output;
-double Kp = 8, Ki = 0.01, Kd = 5; // PID tényezők
+double Kp = 8, Ki = 0.05, Kd = 5; // PID tényezők
 PID pid(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
 
 //RFID CONFIG
@@ -175,12 +176,16 @@ void stop() {
 void turnLeft() {
 
   mpu.update();                   //gyro frissítése
-  float angle = mpu.getAngleZ();  //gyro mérése és aktuális állapot mentése
+  float startAngle = mpu.getAngleZ();  //gyro mérése és aktuális állapot mentése
+  float currentAngle = mpu.getAngleZ(); 
 
-  drive(-80,80); //fordulás megkezdése
+  drive(-90,90); //fordulás megkezdése
   
-  while(mpu.getAngleZ() <= angle+90){ //várakozás amíg el nem értük a kívánt fokot. lehet több vagy kevesebb a kívánt fok.
+  while(currentAngle <= startAngle+180){ //várakozás amíg el nem értük a kívánt fokot. lehet több vagy kevesebb a kívánt fok.
     mpu.update(); //gyro frissítés
+    currentAngle = mpu.getAngleZ(); 
+    howFareAreWeFromDestinacion = ((startAngle+90) - currentAngle)/90;
+    drive(-constrain((70+(45*howFareAreWeFromDestinacion)),65,100),constrain((70+(45*howFareAreWeFromDestinacion)),65,100));
   }
   stop();   //leállítás mert elértük a kívánt fokot
   
@@ -192,11 +197,17 @@ void turnLeft() {
 // Jobbra fordulás 90 fok. Magyarázatért look up turnLeft()
 void turnRight() {
   mpu.update();
-  float angle = mpu.getAngleZ();
-  drive(80,-80);
-  while(mpu.getAngleZ() >= angle-90){ // lehet több vagy kevesebb a kívánt fok
-    mpu.update();
+  float startAngle = mpu.getAngleZ();  //gyro mérése és aktuális állapot mentése
+  float currentAngle = mpu.getAngleZ(); 
+
+  drive(90,-90);
+  while(currentAngle >= startAngle-180){ // lehet több vagy kevesebb a kívánt fok
+    mpu.update(); //gyro frissítés
+    currentAngle = mpu.getAngleZ(); 
+    howFareAreWeFromDestinacion = (currentAngle - (startAngle-90))/90;
+    drive(constrain((70+(45*howFareAreWeFromDestinacion)),65,100),-constrain((70+(45*howFareAreWeFromDestinacion)),65,100));
   }
+  stop();
   mpu.update();
   lastCorrectAngle = mpu.getAngleZ();
 }
@@ -309,7 +320,8 @@ int rfidToDirection(){
   
 //main loop. ezt ismétli a robot.
 void loop() {
-  /* measureDistanceAllDirections();
+  /*int asd = rfidToDirection();
+  measureDistanceAllDirections();
   mpu.update();
   Serial.print(distances[DIRECTION_LEFT]),
   Serial.print(" ");
@@ -323,10 +335,11 @@ void loop() {
   else
   {
     drive(0,0);
-  } */
+  }*/
 
   while (true)
   {
+    
     measureDistanceAllDirections();
     double frontDistanceAtTileCenter = distances[DIRECTION_FRONT];
     int newCommand = 0;
@@ -334,14 +347,19 @@ void loop() {
     if(commands[currentCommand] == DIRECTION_LEFT){
       turnLeft();
       delay(1000);
+      measureDistanceAllDirections();
     }
     if(commands[currentCommand] == DIRECTION_RIGHT){
       turnRight();
       delay(1000);
+      measureDistanceAllDirections();
     }
     currentCommand++;
-    while(distances[DIRECTION_FRONT] > frontDistanceAtTileCenter-28.5){
-      measureDistanceAllDirections();
+    
+    while(distances[DIRECTION_FRONT] > frontDistanceAtTileCenter-27.5){
+      
+      howFareAreWeFromDestinacion = (distances[DIRECTION_FRONT] - (frontDistanceAtTileCenter-27.5)) / 28.5;
+      
       if(!thereWasANewCommand){
         newCommand = rfidToDirection();
         if(newCommand != 0){
@@ -349,7 +367,8 @@ void loop() {
           thereWasANewCommand = true;
         }
       }
-      forwardWithAlignment(100);
+      forwardWithAlignment(constrain(45+55*howFareAreWeFromDestinacion, 45, 100));
+      measureDistanceAllDirections();
     }
     stop();
     if(commands[currentCommand] == 0){
