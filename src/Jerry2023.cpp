@@ -12,6 +12,8 @@
 #define DIRECTION_LEFT 1  //1-balra
 #define DIRECTION_RIGHT 2 //2-jobbra
 #define DIRECTION_STOP 3 //megállás
+#define DIRECTION_START 4 //START
+
  
 //gyro
 MPU6050 mpu(Wire);
@@ -52,7 +54,7 @@ int forwardProportionalSpeed = forwardMaxSpeed-forwardMinSpeed;
 // PID változók   //100 hoz egsz okes: 8 0.01 5 //60hoz: 
 double setpoint = 0; // Kívánt érték
 double input, output;
-double Kp = 8, Ki = 0.05, Kd = 5; // PID tényezők
+double Kp = 1.5, Ki = 0.06, Kd = 1.3; // PID tényezők
 PID pid(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
 
 //RFID CONFIG
@@ -151,9 +153,8 @@ double measureDistance(int triggerPin, int echoPin) {
   digitalWrite(triggerPin, LOW);
 
   // Echo jel értelmezése
-  long duration = pulseIn(echoPin, HIGH);
-  if(triggerPin == TRIGGER_PIN_RIGHT) Serial.println(duration);
-  if(duration > 20000) duration = 0;
+  unsigned long duration = pulseIn(echoPin, HIGH, 50000UL);
+  if(duration > 50000UL) duration = 0;
   if(duration == 0) return 0;
   // Távolság kiszámítása a hangsebesség alapján
   return duration * 0.034 / 2;
@@ -213,7 +214,7 @@ void turnRight() {
   float currentAngle = mpu.getAngleZ(); 
 
   drive(90,-90);
-  while(currentAngle >= startAngle-180){ // lehet több vagy kevesebb a kívánt fok
+  while(currentAngle >= startAngle-170){ // lehet több vagy kevesebb a kívánt fok
     mpu.update(); //gyro frissítés
     currentAngle = mpu.getAngleZ(); 
     howFareAreWeFromDestinacion = (currentAngle - (startAngle-90))/90;
@@ -232,7 +233,7 @@ void turnRight() {
 bool thereIsAWall(int direction, double distances[]){
   double singleDistance;
   singleDistance= distances[direction];
-  if (singleDistance >= 1 && singleDistance <= 22) return true; //22 kb jó
+  if (singleDistance >= 1 && singleDistance <= 16) return true; //22 kb jó
   else return false;
 }
 
@@ -259,13 +260,15 @@ void PidDrive(double distanceFromMiddle, int maxSpeed, bool isThereAWall){
 //feltölt egy double tömböt távolságokkal - előre, balra és jobbra mér
 void measureDistanceAllDirections(){
   distances[DIRECTION_FRONT] = measureDistance(TRIGGER_PIN_FRONT, ECHO_PIN_FRONT);
+  delayMicroseconds(200);
   distances[DIRECTION_LEFT] = measureDistance(TRIGGER_PIN_LEFT, ECHO_PIN_LEFT);
+  delayMicroseconds(200);
   distances[DIRECTION_RIGHT] = measureDistance(TRIGGER_PIN_RIGHT, ECHO_PIN_RIGHT);
 }
 
 //összetett függvény ami a körülötte lévő falak számától függően középre rendezi a robotot miközben előrefele halad. 
 void forwardWithAlignment(int maxSpeed) {
-  double distanceFromSingleWall = 11; //hány cm-re van a fal ha csak egyhez igazodik
+  double distanceFromSingleWall = 11.5; //hány cm-re van a fal ha csak egyhez igazodik
   //mindkét oldalt van fal
   if(thereIsAWall(DIRECTION_LEFT, distances) && thereIsAWall(DIRECTION_RIGHT, distances)){
 
@@ -328,6 +331,9 @@ int rfidToDirection(){
       } else if (cardData.substring (4,8) == "bc 5") {
         Serial.print("palya vege");
         return DIRECTION_STOP;
+      } else if (cardData.substring (4,8) == "bd d") {
+        Serial.print("palya eleje");
+        return DIRECTION_START;
       }
     }
   }
@@ -336,22 +342,42 @@ int rfidToDirection(){
   
 //main loop. ezt ismétli a robot.
 void loop() {
-  /*int asd = rfidToDirection();
-  measureDistanceAllDirections();
-  mpu.update();
-  Serial.print(distances[DIRECTION_LEFT]),
-  Serial.print(" ");
-  Serial.print(distances[DIRECTION_FRONT]),
-  Serial.print(" ");
-  Serial.println(distances[DIRECTION_RIGHT]);
-  if (distances[DIRECTION_FRONT] > 15)
+  while (false)
   {
-    forwardWithAlignment(100);
+    int asd = rfidToDirection();
   }
-  else
+  
+  
+  while (false)
   {
-    drive(0,0);
-  }*/
+      
+      measureDistanceAllDirections();
+      mpu.update();
+      Serial.print(distances[DIRECTION_LEFT]),
+      Serial.print("\t");
+      Serial.print(distances[DIRECTION_FRONT]),
+      Serial.print("\t");
+      Serial.println(distances[DIRECTION_RIGHT]);
+      while (false)
+      {
+        if (distances[DIRECTION_FRONT] > 15)
+        {
+          forwardWithAlignment(90);
+        }
+        else
+        {
+          stop();
+          
+
+          delay(500);
+          turnLeft();
+          turnLeft();
+        }
+      }
+      
+  }
+  
+ 
 
   while (true)
   {
@@ -364,17 +390,28 @@ void loop() {
       turnLeft();
       delay(1000);
       measureDistanceAllDirections();
+      frontDistanceAtTileCenter = distances[DIRECTION_FRONT];
     }
     if(commands[currentCommand] == DIRECTION_RIGHT){
       turnRight();
       delay(1000);
       measureDistanceAllDirections();
+      frontDistanceAtTileCenter = distances[DIRECTION_FRONT];
     }
     currentCommand++;
+    int intX = (int)(frontDistanceAtTileCenter*10)-96;
+    double distanceToTravel = intX % 285;
+    distanceToTravel = distanceToTravel/10;
+    if(distanceToTravel < 20) distanceToTravel+=28.5;
     
-    while(distances[DIRECTION_FRONT] > frontDistanceAtTileCenter-27.5){
-      
-      howFareAreWeFromDestinacion = (distances[DIRECTION_FRONT] - (frontDistanceAtTileCenter-27.5)) / 28.5;
+    
+    while(distances[DIRECTION_FRONT] > frontDistanceAtTileCenter-distanceToTravel){
+      Serial.print(distances[DIRECTION_FRONT]);
+      Serial.print("\t ");
+      Serial.print(distanceToTravel);
+      Serial.print("\t ");
+      Serial.println(frontDistanceAtTileCenter-distanceToTravel);
+      howFareAreWeFromDestinacion = (distances[DIRECTION_FRONT] - (frontDistanceAtTileCenter-distanceToTravel)) / distanceToTravel;
       
       if(!thereWasANewCommand){
         newCommand = rfidToDirection();
@@ -382,11 +419,17 @@ void loop() {
           commands[currentCommand] = newCommand;
           thereWasANewCommand = true;
         }
+        thereWasANewCommand = true;
+        
       }
       forwardWithAlignment(constrain((forwardMinSpeed+forwardProportionalSpeed*howFareAreWeFromDestinacion), forwardMinSpeed, forwardMaxSpeed));
       measureDistanceAllDirections();
     }
+    Serial.println();
+    drive(-40,-40);
+    delay(50);
     stop();
+
     if(commands[currentCommand] == 0){
       if(distances[DIRECTION_FRONT] < 28.5){
         if(distances[DIRECTION_LEFT] > distances[DIRECTION_RIGHT]){
