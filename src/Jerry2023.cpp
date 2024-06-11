@@ -33,11 +33,21 @@ double howFareAreWeFromDestinacion;
 
 //motor pinek
 #define ENA 6 //bal
-#define IN1 10
-#define IN2 7
+#define IN1 7
+#define IN2 10
 #define IN3 4 //jobb
 #define IN4 3
 #define ENB 5
+
+//motor speedek
+int turnMaxSpeed = 110;
+int turnMinSpeed = 60;
+int turnProportionalSpeed = turnMaxSpeed-turnMinSpeed;
+
+int forwardMaxSpeed = 110;
+int forwardMinSpeed = 60;
+int forwardProportionalSpeed = forwardMaxSpeed-forwardMinSpeed;
+
 
 // PID változók   //100 hoz egsz okes: 8 0.01 5 //60hoz: 
 double setpoint = 0; // Kívánt érték
@@ -181,12 +191,14 @@ void turnLeft() {
 
   drive(-90,90); //fordulás megkezdése
   
-  while(currentAngle <= startAngle+180){ //várakozás amíg el nem értük a kívánt fokot. lehet több vagy kevesebb a kívánt fok.
+  while(currentAngle <= startAngle+170){ //várakozás amíg el nem értük a kívánt fokot. lehet több vagy kevesebb a kívánt fok.
     mpu.update(); //gyro frissítés
     currentAngle = mpu.getAngleZ(); 
     howFareAreWeFromDestinacion = ((startAngle+90) - currentAngle)/90;
-    drive(-constrain((70+(45*howFareAreWeFromDestinacion)),65,100),constrain((70+(45*howFareAreWeFromDestinacion)),65,100));
+    drive(-constrain((turnMinSpeed+(turnProportionalSpeed*howFareAreWeFromDestinacion)),turnMinSpeed,turnMaxSpeed),constrain((turnMinSpeed+(turnProportionalSpeed*howFareAreWeFromDestinacion)),turnMinSpeed,turnMaxSpeed));
   }
+  drive(80,-80);
+  delay(60);
   stop();   //leállítás mert elértük a kívánt fokot
   
   //jelenlegi helyzet elmentése egy globális változóba. Ezt a helyzetet használjuk egyenesen haladáshoz amennyiben nincsenek falak.
@@ -205,8 +217,12 @@ void turnRight() {
     mpu.update(); //gyro frissítés
     currentAngle = mpu.getAngleZ(); 
     howFareAreWeFromDestinacion = (currentAngle - (startAngle-90))/90;
-    drive(constrain((70+(45*howFareAreWeFromDestinacion)),65,100),-constrain((70+(45*howFareAreWeFromDestinacion)),65,100));
+    drive(constrain((turnMinSpeed+(turnProportionalSpeed*howFareAreWeFromDestinacion)),turnMinSpeed,turnMaxSpeed),-constrain((turnMinSpeed+(turnProportionalSpeed*howFareAreWeFromDestinacion)),turnMinSpeed,turnMaxSpeed));
   }
+  
+  drive(-80,80);
+  delay(60);
+
   stop();
   mpu.update();
   lastCorrectAngle = mpu.getAngleZ();
@@ -367,7 +383,7 @@ void loop() {
           thereWasANewCommand = true;
         }
       }
-      forwardWithAlignment(constrain(45+55*howFareAreWeFromDestinacion, 45, 100));
+      forwardWithAlignment(constrain((forwardMinSpeed+forwardProportionalSpeed*howFareAreWeFromDestinacion), forwardMinSpeed, forwardMaxSpeed));
       measureDistanceAllDirections();
     }
     stop();
