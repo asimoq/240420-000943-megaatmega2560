@@ -8,11 +8,12 @@
 #include <PID_v1.h>
 
 //a forráskódban irányok megjelölésére gyakran használatban van a 0 1 2 számozás
-#define DIRECTION_FRONT 0 //0-egyenesen
-#define DIRECTION_LEFT 1  //1-balra
-#define DIRECTION_RIGHT 2 //2-jobbra
-#define DIRECTION_STOP 3 //megállás
-#define DIRECTION_START 4 //START
+#define DIRECTION_FRONT       0 //0-egyenesen
+#define DIRECTION_LEFT        1  //1-balra
+#define DIRECTION_RIGHT       2 //2-jobbra
+#define DIRECTION_STOP        3 //megállás
+#define DIRECTION_START       4 //START
+#define DIRECTION_DEAD_END    5 //Zsákutca
 
  
 //gyro
@@ -54,12 +55,12 @@ int forwardProportionalSpeed = forwardMaxSpeed-forwardMinSpeed;
 
 
 // PID változók   //100 hoz egsz okes:  //60hoz: 
-int pidmode = 1;
+int pidmode = 2;
 double setpoint = 0; // Kívánt érték
 double input, output;
 double Kp1 = 30, Ki1 = 0, Kd1 = 30; // PID tényezők
 double Kp2 = 1, Ki2 = 0.1, Kd2 = 1; // PID tényezők
-PID pid(&input, &output, &setpoint, Kp1, Ki1, Kd1, DIRECT);
+PID pid(&input, &output, &setpoint, Kp2, Ki2, Kd2, DIRECT);
 
 
 
@@ -347,53 +348,124 @@ void forwardWithAlignment(int maxSpeed) {
 
 }
 
-//RFID kártya direction outputtal
-int rfidToDirection(){
-  if (mfrc522.PICC_IsNewCardPresent()) {
-    if (mfrc522.PICC_ReadCardSerial()) {
-      // RFID kártya adatok kiolvasása
-      String cardData = "";
-      for (byte i = 0; i < mfrc522.uid.size; i++) {
-        cardData += (String)(mfrc522.uid.uidByte[i] < 0x10 ? " 0" : " ");
-        cardData += String(mfrc522.uid.uidByte[i], HEX);
+//RFID kártya direction outputtal. -1 értéket ad vissza, ha rossz az olvasás.
+  // dirs pointer opcionális az első fordulóban.
+  int rfidToDirection(int *dirs = nullptr){
+    int retVal[4] = {0};
+    if (dirs == nullptr)
+    {
+      dirs = retVal;
+    }
+    
+    if (mfrc522.PICC_IsNewCardPresent()) {
+      if (mfrc522.PICC_ReadCardSerial()) {
+        if ((mfrc522.uid.uidByte[1] == 0xBC))
+        {
+          switch (mfrc522.uid.uidByte[2] & 0xF0)
+          {
+          case 0xC0:
+            /* START */
+            dirs[0] = DIRECTION_START;
+            break;
+          case 0x50:
+            /* STOP */
+            dirs[0] = DIRECTION_STOP;
+            break;
+          case 0xF0:
+            /* JOBBRA */
+            dirs[0] = DIRECTION_RIGHT;
+            break;
+          case 0x00:
+            /* BALRA */
+            dirs[0] = DIRECTION_LEFT;
+            break;
+          case 0x90:
+          case 0xA0:
+            /* EJJB */
+            dirs[0] = DIRECTION_FRONT;
+            dirs[1] = DIRECTION_RIGHT;
+            dirs[2] = DIRECTION_RIGHT;
+            dirs[3] = DIRECTION_LEFT;
+          default:
+          /* bro baj van */
+          dirs[0] = -1;
+          break;
+        }
       }
-      Serial.print("Sima: ");
-      Serial.print(cardData);
-      Serial.println();
-      String vagott = cardData.substring (4,8);
-      Serial.print("vagott: ");
-      Serial.print(vagott);
-      Serial.println();
-      
-
-      // Kártya adatok alapján műveletek végrehajtása
-      if (cardData.substring (4,8) == "bc 0") {
-        Serial.print("fordulas balra");
-        return DIRECTION_LEFT;
-      } else if (cardData.substring (4,8) == "bc f") {
-        Serial.print("fordulas jobbra");
-        return DIRECTION_RIGHT;
-      } else if (cardData.substring (4,8) == "bc 5") {
-        Serial.print("palya vege");
-        return DIRECTION_STOP;
-      } else if (cardData.substring (4,8) == "bd d") {
-        Serial.print("palya eleje");
-        return DIRECTION_START;
+      else if (mfrc522.uid.uidByte[1] == 0xBD)
+      {
+        switch (mfrc522.uid.uidByte[2] & 0xF0)
+        {
+        case 0xD0:
+        case 0xE0:
+        case 0xF0:
+          /* ZSÁK UTCA */
+          dirs[0] = DIRECTION_DEAD_END;
+          break;
+        case 0x00:
+          /* BJJ */
+          dirs[0] = DIRECTION_LEFT;
+          dirs[1] = DIRECTION_RIGHT;
+          dirs[2] = DIRECTION_RIGHT;
+          break;
+        case 0x60:
+          /* JBB */
+          dirs[0] = DIRECTION_RIGHT;
+          dirs[1] = DIRECTION_LEFT;
+          dirs[2] = DIRECTION_LEFT;
+          break;
+        default:
+          /* BRO BAJ VAN */
+          dirs[0] = -1;
+          break;
+        }
       }
+      return dirs[0];
     }
   }
-  return 0;
+  return -2;
 }
   
 //main loop. ezt ismétli a robot.
 void loop() {
+  /* RFID matrica olvasása */
+  while (false)
+  {
+    int dir = rfidToDirection();
+    switch (dir)
+    {
+    case DIRECTION_LEFT:
+      Serial.println("BAL");
+      break;
+    case DIRECTION_RIGHT:
+      Serial.println("JOBB");
+      break;
+    case DIRECTION_FRONT:
+      Serial.println("ELŐRE");
+      break;
+    case DIRECTION_DEAD_END:
+      Serial.println("ZSÁKUTCA");
+      break;
+    case -1:
+      Serial.println("HIBA 1");
+      break;
+    case -2:
+      /* Nincs kártya */
+      Serial.print(".");
+      break;
+    default:
+      Serial.println("Ez nincs még felvíve ebbe a switch case-be");
+      break;
+    }
+  }
+
   while (false)
   {
     int asd = rfidToDirection();
   }
   
   
-  while (true)
+  while (false)
   {
       
       measureDistanceAllDirections();
@@ -447,7 +519,7 @@ void loop() {
       
       if(!thereWasANewCommand){
         newCommand = rfidToDirection();
-        if(newCommand != 0){
+        if(newCommand > 0){
           commands[currentCommand] = newCommand;
           thereWasANewCommand = true;
         }
@@ -457,7 +529,7 @@ void loop() {
       if(howFareAreWeFromDestinacion<0.5){
         pidmode = 2;
       }else{
-        pidmode = 1;
+        pidmode = 2; // 1
       }
       forwardWithAlignment(constrain((forwardMinSpeed+forwardProportionalSpeed*howFareAreWeFromDestinacion), forwardMinSpeed, forwardMaxSpeed));
       measureDistanceAllDirections();
