@@ -44,20 +44,24 @@ double howFareAreWeFromDestinacion;
 #define ENB 5
 
 //motor speedek
-int turnMaxSpeed = 110;
-int turnMinSpeed = 55;
+int turnMaxSpeed = 120;
+int turnMinSpeed = 70;
 int turnProportionalSpeed = turnMaxSpeed-turnMinSpeed;
 
-int forwardMaxSpeed = 110;
-int forwardMinSpeed = 55;
+int forwardMaxSpeed = 120;
+int forwardMinSpeed = 70;
 int forwardProportionalSpeed = forwardMaxSpeed-forwardMinSpeed;
 
 
-// PID változók   //100 hoz egsz okes: 8 0.01 5 //60hoz: 
+// PID változók   //100 hoz egsz okes:  //60hoz: 
+int pidmode = 1;
 double setpoint = 0; // Kívánt érték
 double input, output;
-double Kp = 2, Ki = 0.06, Kd = 1.5; // PID tényezők
-PID pid(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
+double Kp1 = 30, Ki1 = 0, Kd1 = 30; // PID tényezők
+double Kp2 = 1, Ki2 = 0.1, Kd2 = 1; // PID tényezők
+PID pid(&input, &output, &setpoint, Kp1, Ki1, Kd1, DIRECT);
+
+
 
 //RFID CONFIG
 #define RST_PIN 8
@@ -155,8 +159,8 @@ double measureDistance(int triggerPin, int echoPin) {
   digitalWrite(triggerPin, LOW);
 
   // Echo jel értelmezése
-  unsigned long duration = pulseIn(echoPin, HIGH, 1000000UL);
-  if(duration > 500000UL) duration = 0;
+  unsigned long duration = pulseIn(echoPin, HIGH, 25000UL);
+  if(duration > 25000UL) duration = 0;
   if(duration == 0) return 0;
   // Távolság kiszámítása a hangsebesség alapján
   return duration * 0.034 / 2;
@@ -244,8 +248,9 @@ void PidDrive(double distanceFromMiddle, int maxSpeed, bool isThereAWall){
   input = distanceFromMiddle;
 
   // Számold ki a PID szabályozó kimenetét
+  if(pidmode==1) pid.SetTunings(Kp1,Ki1,Kd1);
+  if(pidmode==2) pid.SetTunings(Kp2,Ki2,Kd2);
   pid.Compute();
-
   // Motorok vezérlése a PID kimenet alapján
   int motorSpeedLeft = constrain(maxSpeed - output, -255, 255); // Bal motor sebessége
   int motorSpeedRight = constrain(maxSpeed + output, -255, 255); // Jobb motor sebessége
@@ -258,17 +263,36 @@ void PidDrive(double distanceFromMiddle, int maxSpeed, bool isThereAWall){
     lastCorrectAngle = mpu.getAngleZ();
   }
 }
+
+
 double measureFrontDistanceWithFilter(){
-  double first = measureDistance(TRIGGER_PIN_FRONT, ECHO_PIN_FRONT);
-  delayMicroseconds(500);
-  double second = measureDistance(TRIGGER_PIN_FRONT, ECHO_PIN_FRONT);
-  delayMicroseconds(500);
-  double third = measureDistance(TRIGGER_PIN_FRONT, ECHO_PIN_FRONT);
-  delayMicroseconds(500);
-  if(first-second > 20) return first;
-  if(first-third > 20) return first;
-  if(second-first > 20) return second;
-  return first;
+  unsigned int numberOfMeasurements = 4;
+  double treshold = 10;
+  unsigned int NumberOfMatchesNeeded = 3;
+  double frontdistances[numberOfMeasurements];
+  for (size_t i = 0; i < numberOfMeasurements; i++)
+  {
+    frontdistances[i] = measureDistance(TRIGGER_PIN_FRONT, ECHO_PIN_FRONT);
+    delay(10);
+  }
+  for (size_t i = 0; i < numberOfMeasurements; i++)
+  {
+    int matched = 0;
+    for (size_t j = 0; j < numberOfMeasurements; j++)
+    {
+      if(abs(frontdistances[i]-frontdistances[j])<treshold) matched++;
+    }
+    if(matched-1>NumberOfMatchesNeeded) return frontdistances[i];
+  }
+  double sum, avg;
+  sum = 0;
+  avg = 0;
+
+  for(int i = 0; i < numberOfMeasurements; i++){
+      sum += frontdistances[i];
+  }
+  avg = sum / numberOfMeasurements;
+  return avg;
 }
 //feltölt egy double tömböt távolságokkal - előre, balra és jobbra mér
 void measureDistanceAllDirections(){
@@ -369,7 +393,7 @@ void loop() {
   }
   
   
-  while (false)
+  while (true)
   {
       
       measureDistanceAllDirections();
@@ -379,30 +403,21 @@ void loop() {
       Serial.print(distances[DIRECTION_FRONT]),
       Serial.print("\t");
       Serial.println(distances[DIRECTION_RIGHT]);
-      while (false)
-      {
-        if (distances[DIRECTION_FRONT] > 15)
-        {
-          forwardWithAlignment(90);
-        }
-        else
-        {
-          stop();
-          
-
-          delay(500);
-          turnLeft();
-          turnLeft();
-        }
-      }
       
+      if (distances[DIRECTION_FRONT] > 5)
+      {
+        forwardWithAlignment(100);
+      }
+      else
+      {
+        stop();        
+      }
   }
   
  
 
   while (true)
   {
-    
     measureDistanceAllDirections();
     double frontDistanceAtTileCenter = distances[DIRECTION_FRONT];
     int newCommand = 0;
@@ -410,22 +425,20 @@ void loop() {
     if(commands[currentCommand] == DIRECTION_LEFT){
       turnLeft();
       delay(1000);
-      isFirstMeasurement = true;
       measureDistanceAllDirections();
       frontDistanceAtTileCenter = distances[DIRECTION_FRONT];
     }
     if(commands[currentCommand] == DIRECTION_RIGHT){
       turnRight();
       delay(1000);
-      isFirstMeasurement = true;
       measureDistanceAllDirections();
       frontDistanceAtTileCenter = distances[DIRECTION_FRONT];
     }
     currentCommand++;
-    int intX = (int)(frontDistanceAtTileCenter*10)-116;
+    int intX = (int)(frontDistanceAtTileCenter*10)-140;
     double distanceToTravel = intX % 285;
     distanceToTravel = distanceToTravel/10;
-    if(distanceToTravel < 10) distanceToTravel+=28.5;
+    if(distanceToTravel < 16) distanceToTravel+=28.5;
     
     
     while(distances[DIRECTION_FRONT] > (frontDistanceAtTileCenter-distanceToTravel)){
@@ -441,6 +454,11 @@ void loop() {
         
         
       }
+      if(howFareAreWeFromDestinacion<0.5){
+        pidmode = 2;
+      }else{
+        pidmode = 1;
+      }
       forwardWithAlignment(constrain((forwardMinSpeed+forwardProportionalSpeed*howFareAreWeFromDestinacion), forwardMinSpeed, forwardMaxSpeed));
       measureDistanceAllDirections();
       Serial.print(distances[DIRECTION_FRONT]);
@@ -452,9 +470,10 @@ void loop() {
       Serial.println(howFareAreWeFromDestinacion);
     }
     Serial.println("kilepett");
-    /*drive(-40,-40);
-    delay(50);*/
+    drive(-150,-150);
+    delay(100);
     stop();
+    
 
     if(commands[currentCommand] == 0){
       if(distances[DIRECTION_FRONT] < 28.5){
