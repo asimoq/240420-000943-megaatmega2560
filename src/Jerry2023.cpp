@@ -45,18 +45,18 @@ double howFareAreWeFromDestinacion;
 
 //motor speedek
 int turnMaxSpeed = 110;
-int turnMinSpeed = 60;
+int turnMinSpeed = 55;
 int turnProportionalSpeed = turnMaxSpeed-turnMinSpeed;
 
 int forwardMaxSpeed = 110;
-int forwardMinSpeed = 60;
+int forwardMinSpeed = 55;
 int forwardProportionalSpeed = forwardMaxSpeed-forwardMinSpeed;
 
 
 // PID változók   //100 hoz egsz okes: 8 0.01 5 //60hoz: 
 double setpoint = 0; // Kívánt érték
 double input, output;
-double Kp = 1.5, Ki = 0.06, Kd = 1.3; // PID tényezők
+double Kp = 2, Ki = 0.06, Kd = 1.5; // PID tényezők
 PID pid(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
 
 //RFID CONFIG
@@ -258,18 +258,29 @@ void PidDrive(double distanceFromMiddle, int maxSpeed, bool isThereAWall){
     lastCorrectAngle = mpu.getAngleZ();
   }
 }
-
+double measureFrontDistanceWithFilter(){
+  double first = measureDistance(TRIGGER_PIN_FRONT, ECHO_PIN_FRONT);
+  delayMicroseconds(500);
+  double second = measureDistance(TRIGGER_PIN_FRONT, ECHO_PIN_FRONT);
+  delayMicroseconds(500);
+  double third = measureDistance(TRIGGER_PIN_FRONT, ECHO_PIN_FRONT);
+  delayMicroseconds(500);
+  if(first-second > 20) return first;
+  if(first-third > 20) return first;
+  if(second-first > 20) return second;
+  return first;
+}
 //feltölt egy double tömböt távolságokkal - előre, balra és jobbra mér
 void measureDistanceAllDirections(){
 
-  distances[DIRECTION_FRONT] = measureDistance(TRIGGER_PIN_FRONT, ECHO_PIN_FRONT);
+  distances[DIRECTION_FRONT] = measureFrontDistanceWithFilter();
   delayMicroseconds(500);
-  if(lastDistances[DIRECTION_FRONT]-distances[DIRECTION_FRONT] > 10 && !isFirstMeasurement){
+  /*if(lastDistances[DIRECTION_FRONT]-distances[DIRECTION_FRONT] > 10 && !isFirstMeasurement){
     distances[DIRECTION_FRONT] = lastDistances[DIRECTION_FRONT];
   }else{
     lastDistances[DIRECTION_FRONT] = distances[DIRECTION_FRONT];
     isFirstMeasurement = false;
-  }
+  }*/
   distances[DIRECTION_LEFT] = measureDistance(TRIGGER_PIN_LEFT, ECHO_PIN_LEFT);
   delayMicroseconds(500);
   distances[DIRECTION_RIGHT] = measureDistance(TRIGGER_PIN_RIGHT, ECHO_PIN_RIGHT);
@@ -352,7 +363,7 @@ int rfidToDirection(){
   
 //main loop. ezt ismétli a robot.
 void loop() {
-  while (true)
+  while (false)
   {
     int asd = rfidToDirection();
   }
@@ -414,7 +425,7 @@ void loop() {
     int intX = (int)(frontDistanceAtTileCenter*10)-116;
     double distanceToTravel = intX % 285;
     distanceToTravel = distanceToTravel/10;
-    if(distanceToTravel < 20) distanceToTravel+=28.5;
+    if(distanceToTravel < 10) distanceToTravel+=28.5;
     
     
     while(distances[DIRECTION_FRONT] > (frontDistanceAtTileCenter-distanceToTravel)){
@@ -425,8 +436,9 @@ void loop() {
         newCommand = rfidToDirection();
         if(newCommand != 0){
           commands[currentCommand] = newCommand;
+          thereWasANewCommand = true;
         }
-        thereWasANewCommand = true;
+        
         
       }
       forwardWithAlignment(constrain((forwardMinSpeed+forwardProportionalSpeed*howFareAreWeFromDestinacion), forwardMinSpeed, forwardMaxSpeed));
@@ -440,8 +452,8 @@ void loop() {
       Serial.println(howFareAreWeFromDestinacion);
     }
     Serial.println("kilepett");
-    drive(-40,-40);
-    delay(50);
+    /*drive(-40,-40);
+    delay(50);*/
     stop();
 
     if(commands[currentCommand] == 0){
