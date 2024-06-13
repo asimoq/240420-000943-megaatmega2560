@@ -46,11 +46,11 @@ double howFareAreWeFromDestinacion;
 
 //motor speedek
 int turnMaxSpeed = 120;
-int turnMinSpeed = 70;
+int turnMinSpeed = 80;
 int turnProportionalSpeed = turnMaxSpeed-turnMinSpeed;
 
 int forwardMaxSpeed = 120;
-int forwardMinSpeed = 70;
+int forwardMinSpeed = 90;
 int forwardProportionalSpeed = forwardMaxSpeed-forwardMinSpeed;
 
 
@@ -58,8 +58,8 @@ int forwardProportionalSpeed = forwardMaxSpeed-forwardMinSpeed;
 int pidmode = 2;
 double setpoint = 0; // Kívánt érték
 double input, output;
-double Kp1 = 30, Ki1 = 0, Kd1 = 30; // PID tényezők
-double Kp2 = 1, Ki2 = 0.1, Kd2 = 1; // PID tényezők
+//double Kp1 = 30, Ki1 = 0, Kd1 = 30; // PID tényezők
+double Kp2 = 0.3, Ki2 = 0.3, Kd2 = 0.9; // PID tényezők
 PID pid(&input, &output, &setpoint, Kp2, Ki2, Kd2, DIRECT);
 
 
@@ -111,6 +111,7 @@ void setup() {
 
   pid.SetMode(AUTOMATIC);
   pid.SetOutputLimits(-255,255);
+  pid.SetSampleTime(25);
 
   mpu.update();
   lastCorrectAngle = mpu.getAngleZ();
@@ -191,7 +192,7 @@ void stop() {
 }
 
 // Balra fordulás 90 fok
-void turnLeft() {
+void turnLeft(double desiredangle) {
 
   mpu.update();                   //gyro frissítése
   float startAngle = mpu.getAngleZ();  //gyro mérése és aktuális állapot mentése
@@ -199,10 +200,10 @@ void turnLeft() {
 
   drive(-90,90); //fordulás megkezdése
   
-  while(currentAngle <= startAngle+170){ //várakozás amíg el nem értük a kívánt fokot. lehet több vagy kevesebb a kívánt fok.
+  while(currentAngle <= startAngle+desiredangle*2){ //várakozás amíg el nem értük a kívánt fokot. lehet több vagy kevesebb a kívánt fok.
     mpu.update(); //gyro frissítés
     currentAngle = mpu.getAngleZ(); 
-    howFareAreWeFromDestinacion = ((startAngle+90) - currentAngle)/90;
+    howFareAreWeFromDestinacion = ((startAngle+desiredangle) - currentAngle)/desiredangle;
     drive(-constrain((turnMinSpeed+(turnProportionalSpeed*howFareAreWeFromDestinacion)),turnMinSpeed,turnMaxSpeed),constrain((turnMinSpeed+(turnProportionalSpeed*howFareAreWeFromDestinacion)),turnMinSpeed,turnMaxSpeed));
   }
   drive(80,-80);
@@ -215,16 +216,16 @@ void turnLeft() {
 }
 
 // Jobbra fordulás 90 fok. Magyarázatért look up turnLeft()
-void turnRight() {
+void turnRight(double desiredangle) {
   mpu.update();
   float startAngle = mpu.getAngleZ();  //gyro mérése és aktuális állapot mentése
   float currentAngle = mpu.getAngleZ(); 
 
   drive(90,-90);
-  while(currentAngle >= startAngle-170){ // lehet több vagy kevesebb a kívánt fok
+  while(currentAngle >= startAngle-desiredangle*2){ // lehet több vagy kevesebb a kívánt fok
     mpu.update(); //gyro frissítés
     currentAngle = mpu.getAngleZ(); 
-    howFareAreWeFromDestinacion = (currentAngle - (startAngle-90))/90;
+    howFareAreWeFromDestinacion = (currentAngle - (startAngle-desiredangle))/desiredangle;
     drive(constrain((turnMinSpeed+(turnProportionalSpeed*howFareAreWeFromDestinacion)),turnMinSpeed,turnMaxSpeed),-constrain((turnMinSpeed+(turnProportionalSpeed*howFareAreWeFromDestinacion)),turnMinSpeed,turnMaxSpeed));
   }
   
@@ -240,7 +241,7 @@ void turnRight() {
 bool thereIsAWall(int direction, double distances[]){
   double singleDistance;
   singleDistance= distances[direction];
-  if (singleDistance >= 1 && singleDistance <= 16) return true; //22 kb jó
+  if (singleDistance >= 1 && singleDistance <= 15) return true; //22 kb jó
   else return false;
 }
 
@@ -249,11 +250,11 @@ void PidDrive(double distanceFromMiddle, int maxSpeed, bool isThereAWall){
   input = distanceFromMiddle;
 
   // Számold ki a PID szabályozó kimenetét
-  if(pidmode==1) pid.SetTunings(Kp1,Ki1,Kd1);
+  if(pidmode==1) pid.SetTunings(Kp2,Ki2,Kd2);
   if(pidmode==2) pid.SetTunings(Kp2,Ki2,Kd2);
   pid.Compute();
   // Motorok vezérlése a PID kimenet alapján
-  int motorSpeedLeft = constrain(maxSpeed - output, -255, 255); // Bal motor sebessége
+  int motorSpeedLeft = constrain(maxSpeed - output*1.3, -255, 255); // Bal motor sebessége
   int motorSpeedRight = constrain(maxSpeed + output, -255, 255); // Jobb motor sebessége
 
   // Motorok mozgatása
@@ -274,7 +275,7 @@ double measureFrontDistanceWithFilter(){
   for (size_t i = 0; i < numberOfMeasurements; i++)
   {
     frontdistances[i] = measureDistance(TRIGGER_PIN_FRONT, ECHO_PIN_FRONT);
-    delay(10);
+    delayMicroseconds(500);
   }
   for (size_t i = 0; i < numberOfMeasurements; i++)
   {
@@ -298,7 +299,7 @@ double measureFrontDistanceWithFilter(){
 //feltölt egy double tömböt távolságokkal - előre, balra és jobbra mér
 void measureDistanceAllDirections(){
 
-  distances[DIRECTION_FRONT] = measureFrontDistanceWithFilter();
+  //distances[DIRECTION_FRONT] = measureFrontDistanceWithFilter();
   delayMicroseconds(500);
   /*if(lastDistances[DIRECTION_FRONT]-distances[DIRECTION_FRONT] > 10 && !isFirstMeasurement){
     distances[DIRECTION_FRONT] = lastDistances[DIRECTION_FRONT];
@@ -425,6 +426,18 @@ void forwardWithAlignment(int maxSpeed) {
   }
   return -2;
 }
+
+void orientRobot(double desiredAngle){
+  mpu.update();
+  if(abs(mpu.getAngleZ()-desiredAngle)>10){
+    if(mpu.getAngleZ()>desiredAngle){
+      turnRight((mpu.getAngleZ()-desiredAngle)/2);
+    }else{
+      turnLeft(abs(mpu.getAngleZ()-desiredAngle)/2);
+    }
+  }
+  
+}
   
 //main loop. ezt ismétli a robot.
 void loop() {
@@ -495,26 +508,41 @@ void loop() {
     int newCommand = 0;
     bool thereWasANewCommand = false;
     if(commands[currentCommand] == DIRECTION_LEFT){
-      turnLeft();
-      delay(1000);
+      drive(-150,-150);
+      delay(50);
+      stop();
+      delay(100);
+      turnLeft(80);
+      delay(100);
       measureDistanceAllDirections();
       frontDistanceAtTileCenter = distances[DIRECTION_FRONT];
     }
     if(commands[currentCommand] == DIRECTION_RIGHT){
-      turnRight();
-      delay(1000);
+      drive(-150,-150);
+      delay(50);
+      stop();
+      delay(100);
+      turnRight(80);
+      delay(100);
       measureDistanceAllDirections();
       frontDistanceAtTileCenter = distances[DIRECTION_FRONT];
     }
     currentCommand++;
-    int intX = (int)(frontDistanceAtTileCenter*10)-140;
+    int intX = (int)(frontDistanceAtTileCenter*10)-150;
     double distanceToTravel = intX % 285;
     distanceToTravel = distanceToTravel/10;
     if(distanceToTravel < 16) distanceToTravel+=28.5;
-    
-    
+    drive(50,20);
+    delay(50);
+    mpu.update();
+    double startOrientation = mpu.getAngleZ();
+    unsigned long timer = micros();
     while(distances[DIRECTION_FRONT] > (frontDistanceAtTileCenter-distanceToTravel)){
+      Serial.println(micros()-timer);
+      timer = micros();
       
+      mpu.update();
+
       howFareAreWeFromDestinacion = (distances[DIRECTION_FRONT] - (frontDistanceAtTileCenter-distanceToTravel)) / distanceToTravel;
       
       if(!thereWasANewCommand){
@@ -542,9 +570,12 @@ void loop() {
       Serial.println(howFareAreWeFromDestinacion);
     }
     Serial.println("kilepett");
-    drive(-150,-150);
-    delay(100);
+    /*drive(-150,-150);
+    delay(50);
     stop();
+    delay(100);*/
+    //orientRobot(startOrientation);
+    
     
 
     if(commands[currentCommand] == 0){
@@ -560,6 +591,6 @@ void loop() {
         commands[currentCommand] = DIRECTION_FRONT;
       }
     }
-    delay(1000);
+    //delay(100);
   }
 }
