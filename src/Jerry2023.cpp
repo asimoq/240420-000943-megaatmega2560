@@ -45,21 +45,21 @@ double howFareAreWeFromDestinacion;
 #define ENB 5
 
 //motor speedek
-int turnMaxSpeed = 120;
-int turnMinSpeed = 80;
+int turnMaxSpeed = 130;
+int turnMinSpeed = 75;
 int turnProportionalSpeed = turnMaxSpeed-turnMinSpeed;
 
-int forwardMaxSpeed = 120;
-int forwardMinSpeed = 90;
+int forwardMaxSpeed = 90;
+int forwardMinSpeed = 78;
 int forwardProportionalSpeed = forwardMaxSpeed-forwardMinSpeed;
 
 
-// PID változók   //100 hoz egsz okes:  //60hoz: 
+// PID változók   //100 hoz egsz okes: 0.3 0.3 0.9  //60hoz: 
 int pidmode = 2;
 double setpoint = 0; // Kívánt érték
 double input, output;
 //double Kp1 = 30, Ki1 = 0, Kd1 = 30; // PID tényezők
-double Kp2 = 0.3, Ki2 = 0.3, Kd2 = 0.9; // PID tényezők
+double Kp2 = 0.3, Ki2 = 0.4, Kd2 = 0.9; // PID tényezők
 PID pid(&input, &output, &setpoint, Kp2, Ki2, Kd2, DIRECT);
 
 
@@ -254,7 +254,7 @@ void PidDrive(double distanceFromMiddle, int maxSpeed, bool isThereAWall){
   if(pidmode==2) pid.SetTunings(Kp2,Ki2,Kd2);
   pid.Compute();
   // Motorok vezérlése a PID kimenet alapján
-  int motorSpeedLeft = constrain(maxSpeed - output*1.3, -255, 255); // Bal motor sebessége
+  int motorSpeedLeft = constrain(maxSpeed - output*1.4, -255, 255); // Bal motor sebessége
   int motorSpeedRight = constrain(maxSpeed + output, -255, 255); // Jobb motor sebessége
 
   // Motorok mozgatása
@@ -267,15 +267,15 @@ void PidDrive(double distanceFromMiddle, int maxSpeed, bool isThereAWall){
 }
 
 
-double measureFrontDistanceWithFilter(){
+double measureFrontDistanceWithFilter(int trigerpin, int echopin){
   unsigned int numberOfMeasurements = 4;
   double treshold = 10;
   unsigned int NumberOfMatchesNeeded = 3;
   double frontdistances[numberOfMeasurements];
   for (size_t i = 0; i < numberOfMeasurements; i++)
   {
-    frontdistances[i] = measureDistance(TRIGGER_PIN_FRONT, ECHO_PIN_FRONT);
-    delayMicroseconds(500);
+    frontdistances[i] = measureDistance(trigerpin, echopin);
+    delay(10);
   }
   for (size_t i = 0; i < numberOfMeasurements; i++)
   {
@@ -299,7 +299,7 @@ double measureFrontDistanceWithFilter(){
 //feltölt egy double tömböt távolságokkal - előre, balra és jobbra mér
 void measureDistanceAllDirections(){
 
-  //distances[DIRECTION_FRONT] = measureFrontDistanceWithFilter();
+  distances[DIRECTION_FRONT] = measureFrontDistanceWithFilter(TRIGGER_PIN_FRONT,ECHO_PIN_FRONT);
   delayMicroseconds(500);
   /*if(lastDistances[DIRECTION_FRONT]-distances[DIRECTION_FRONT] > 10 && !isFirstMeasurement){
     distances[DIRECTION_FRONT] = lastDistances[DIRECTION_FRONT];
@@ -315,7 +315,7 @@ void measureDistanceAllDirections(){
 
 //összetett függvény ami a körülötte lévő falak számától függően középre rendezi a robotot miközben előrefele halad. 
 void forwardWithAlignment(int maxSpeed) {
-  double distanceFromSingleWall = 11.5; //hány cm-re van a fal ha csak egyhez igazodik
+  double distanceFromSingleWall = 13; //hány cm-re van a fal ha csak egyhez igazodik 11.5
   //mindkét oldalt van fal
   if(thereIsAWall(DIRECTION_LEFT, distances) && thereIsAWall(DIRECTION_RIGHT, distances)){
 
@@ -441,7 +441,8 @@ void orientRobot(double desiredAngle){
   
 //main loop. ezt ismétli a robot.
 void loop() {
-  /* RFID matrica olvasása */
+  /*
+  
   while (false)
   {
     int dir = rfidToDirection();
@@ -463,7 +464,7 @@ void loop() {
       Serial.println("HIBA 1");
       break;
     case -2:
-      /* Nincs kártya */
+      
       Serial.print(".");
       break;
     default:
@@ -498,57 +499,80 @@ void loop() {
         stop();        
       }
   }
-  
+  */
  
 
-  while (true)
-  {
+  //while (true)
+  //{
     measureDistanceAllDirections();
     double frontDistanceAtTileCenter = distances[DIRECTION_FRONT];
     int newCommand = 0;
     bool thereWasANewCommand = false;
     if(commands[currentCommand] == DIRECTION_LEFT){
-      drive(-150,-150);
-      delay(50);
+      drive(-100,-100);
+      delay(20);
       stop();
       delay(100);
-      turnLeft(80);
+      turnLeft(83);
       delay(100);
       measureDistanceAllDirections();
+      if(distances[DIRECTION_FRONT] < 28.5){
+        stop();
+        delay(100);
+        turnLeft(83);
+        delay(100);
+        measureDistanceAllDirections();
+      }
       frontDistanceAtTileCenter = distances[DIRECTION_FRONT];
     }
     if(commands[currentCommand] == DIRECTION_RIGHT){
-      drive(-150,-150);
-      delay(50);
+      drive(-100,-100);
+      delay(20);
       stop();
       delay(100);
-      turnRight(80);
+      turnRight(83);
       delay(100);
       measureDistanceAllDirections();
+      if(distances[DIRECTION_FRONT] < 28.5){
+        stop();
+        delay(100);
+        turnRight(83);
+        delay(100);
+        measureDistanceAllDirections();
+      }
       frontDistanceAtTileCenter = distances[DIRECTION_FRONT];
     }
     currentCommand++;
-    int intX = (int)(frontDistanceAtTileCenter*10)-150;
+    int intX = (int)(frontDistanceAtTileCenter*10)-170;
     double distanceToTravel = intX % 285;
     distanceToTravel = distanceToTravel/10;
     if(distanceToTravel < 16) distanceToTravel+=28.5;
-    drive(50,20);
+    drive(100,50);
     delay(50);
-    mpu.update();
-    double startOrientation = mpu.getAngleZ();
-    unsigned long timer = micros();
+    if(frontDistanceAtTileCenter==0){
+      frontDistanceAtTileCenter=17;
+      distanceToTravel=0;
+    }
     while(distances[DIRECTION_FRONT] > (frontDistanceAtTileCenter-distanceToTravel)){
-      Serial.println(micros()-timer);
-      timer = micros();
-      
       mpu.update();
-
       howFareAreWeFromDestinacion = (distances[DIRECTION_FRONT] - (frontDistanceAtTileCenter-distanceToTravel)) / distanceToTravel;
       
       if(!thereWasANewCommand){
         newCommand = rfidToDirection();
         if(newCommand > 0){
           commands[currentCommand] = newCommand;
+          if(newCommand==DIRECTION_STOP){
+            stop();
+            drive(90,-90);
+            delay(2000);
+            while (true){
+              stop();
+            }
+            {
+              /* code */
+            }
+            
+          }
           thereWasANewCommand = true;
         }
         
@@ -580,7 +604,7 @@ void loop() {
 
     if(commands[currentCommand] == 0){
       if(distances[DIRECTION_FRONT] < 28.5){
-        if(distances[DIRECTION_LEFT] > distances[DIRECTION_RIGHT]){
+        if(measureFrontDistanceWithFilter(TRIGGER_PIN_LEFT,ECHO_PIN_LEFT) > measureFrontDistanceWithFilter(TRIGGER_PIN_RIGHT,ECHO_PIN_RIGHT)){
           commands[currentCommand] = DIRECTION_LEFT;
         }
         else{
@@ -592,5 +616,5 @@ void loop() {
       }
     }
     //delay(100);
-  }
+  //}
 }
