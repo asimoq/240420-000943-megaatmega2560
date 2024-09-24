@@ -21,13 +21,10 @@ MPU6050 mpu(Wire);
 unsigned long timer = 0;
 float lastCorrectAngle = 0;
 
-//ultrahangos pinek
-#define TRIGGER_PIN_FRONT A2
-#define ECHO_PIN_FRONT A3
-#define TRIGGER_PIN_RIGHT A0
-#define ECHO_PIN_RIGHT A1
-#define TRIGGER_PIN_LEFT A4
-#define ECHO_PIN_LEFT A5
+// IR sensor pins (analog inputs)
+#define IR_PIN_FRONT A1  // Front IR sensor connected to analog pin A1
+#define IR_PIN_RIGHT A2  // Right IR sensor connected to analog pin A2
+#define IR_PIN_LEFT A0   // Left IR sensor connected to analog pin A0
 
 double distances[3];
 double lastDistances[3];
@@ -37,12 +34,12 @@ int currentCommand;
 double howFareAreWeFromDestinacion;
 
 //motor pinek
-#define ENA 6 //bal
-#define IN1 7
-#define IN2 10
-#define IN3 4 //jobb
-#define IN4 3
-#define ENB 5
+#define ENA 5 //bal
+#define IN1 3
+#define IN2 4
+#define IN3 10 //jobb
+#define IN4 7
+#define ENB 6
 
 //motor speedek
 int turnMaxSpeed = 130;
@@ -59,8 +56,10 @@ int pidmode = 2;
 double setpoint = 0; // Kívánt érték
 double input, output;
 //double Kp1 = 30, Ki1 = 0, Kd1 = 30; // PID tényezők
-double Kp2 = 0.3, Ki2 = 0.4, Kd2 = 0.9; // PID tényezők
+double Kp2 = 15, Ki2 = 0.1, Kd2 = 5; // PID tényezők
 PID pid(&input, &output, &setpoint, Kp2, Ki2, Kd2, DIRECT);
+
+double distanceFromSingleWall = 10; //hány cm-re van a fal ha csak egyhez igazodik 11.5
 
 
 
@@ -85,13 +84,6 @@ void setup() {
   mpu.calcOffsets(); // gyro and accelero
   Serial.println("Done!\n");
 
-  // Ultrahangos távérzékelő pin-ek beállítása
-  pinMode(TRIGGER_PIN_FRONT, OUTPUT);
-  pinMode(ECHO_PIN_FRONT, INPUT);
-  pinMode(TRIGGER_PIN_RIGHT, OUTPUT);
-  pinMode(ECHO_PIN_RIGHT, INPUT);
-  pinMode(TRIGGER_PIN_LEFT, OUTPUT);
-  pinMode(ECHO_PIN_LEFT, INPUT);
 
   // Motorvezérlő pin-ek beállítása
   pinMode(ENA, OUTPUT);
@@ -148,27 +140,35 @@ void drive(int motorSpeedLeft, int motorSpeedRight) {
 }
 
 //TÁVOLSÁGMÉRÉS CM-BEN
-double measureDistance(int triggerPin, int echoPin) {
+// TÁVOLSÁGMÉRÉS CM-BEN IR szenzorral
+double measureDistance(int analogPin) {
   
-  pinMode(triggerPin, OUTPUT);
-  pinMode(echoPin, INPUT);
-  digitalWrite(triggerPin, LOW);
-  delayMicroseconds(2);
-
-  // Trigger jel küldése
-  digitalWrite(triggerPin, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(triggerPin, LOW);
-
-  // Echo jel értelmezése
-  unsigned long duration = pulseIn(echoPin, HIGH, 25000UL);
-  if(duration > 25000UL) duration = 0;
-  if(duration == 0) return 0;
-  // Távolság kiszámítása a hangsebesség alapján
-  return duration * 0.034 / 2;
+  int sensorValue = analogRead(analogPin);  // IR szenzor analóg értékének beolvasása
   
+  // Az alábbiakban egy példa konverziót használunk, ami az IR szenzor jellegzetességeitől függ.
+  // A gyártó specifikációja szerint egy konkrét érzékelési görbe van, amit ki kell számolni.
+  // Egy egyszerű példa alapján (lineáris közelítés, de a szenzorra specifikus görbét kell használni):
 
+  double voltage = sensorValue * (5.0 / 1023.0);  // Feszültség számítása (5V a referencia feszültség)
   
+  // A szenzor adatlapján található feszültség-távolság görbe alapján kell meghatározni a képletet.
+  // Például egy egyszerű konverzió 4 cm és 30 cm közötti távolságra:
+
+  if (voltage == 0) return 0;  // Ha a feszültség 0, nincs mért távolság
+
+  // A távolság kiszámítása a feszültség alapján (ez egy példaképlet, pontos görbe kell)
+  double distanceCm = (4 / (voltage - 0.042)) - 0.42;
+
+  // Az érzékelési tartományon kívül eső értékek szűrése
+  if (distanceCm < 2) {
+    return 0; // Érzékelési tartományon kívül
+  }
+
+  if (distanceCm > 30.0) {
+    return 30; // Érzékelési tartományon kívül
+  }
+
+  return distanceCm;
 }
 
 // Előre haladás
@@ -241,7 +241,7 @@ void turnRight(double desiredangle) {
 bool thereIsAWall(int direction, double distances[]){
   double singleDistance;
   singleDistance= distances[direction];
-  if (singleDistance >= 1 && singleDistance <= 15) return true; //22 kb jó
+  if (singleDistance >= 1 && singleDistance <= 22) return true; //22 kb jó
   else return false;
 }
 
@@ -254,8 +254,8 @@ void PidDrive(double distanceFromMiddle, int maxSpeed, bool isThereAWall){
   if(pidmode==2) pid.SetTunings(Kp2,Ki2,Kd2);
   pid.Compute();
   // Motorok vezérlése a PID kimenet alapján
-  int motorSpeedLeft = constrain(maxSpeed - output*1.4, -255, 255); // Bal motor sebessége
-  int motorSpeedRight = constrain(maxSpeed + output, -255, 255); // Jobb motor sebessége
+  int motorSpeedLeft = constrain(maxSpeed - output, -50, 255); // Bal motor sebessége
+  int motorSpeedRight = constrain(maxSpeed + output, -50, 255); // Jobb motor sebessége
 
   // Motorok mozgatása
   drive(motorSpeedLeft,motorSpeedRight);
@@ -267,14 +267,14 @@ void PidDrive(double distanceFromMiddle, int maxSpeed, bool isThereAWall){
 }
 
 
-double measureFrontDistanceWithFilter(int trigerpin, int echopin){
+double measureFrontDistanceWithFilter(int trigerpin){
   unsigned int numberOfMeasurements = 4;
   double treshold = 10;
   unsigned int NumberOfMatchesNeeded = 3;
   double frontdistances[numberOfMeasurements];
   for (size_t i = 0; i < numberOfMeasurements; i++)
   {
-    frontdistances[i] = measureDistance(trigerpin, echopin);
+    frontdistances[i] = measureDistance(trigerpin);
     delay(10);
   }
   for (size_t i = 0; i < numberOfMeasurements; i++)
@@ -299,23 +299,24 @@ double measureFrontDistanceWithFilter(int trigerpin, int echopin){
 //feltölt egy double tömböt távolságokkal - előre, balra és jobbra mér
 void measureDistanceAllDirections(){
 
-  distances[DIRECTION_FRONT] = measureFrontDistanceWithFilter(TRIGGER_PIN_FRONT,ECHO_PIN_FRONT);
-  delayMicroseconds(500);
+  distances[DIRECTION_FRONT] = measureDistance(IR_PIN_FRONT);
+  delayMicroseconds(50);
   /*if(lastDistances[DIRECTION_FRONT]-distances[DIRECTION_FRONT] > 10 && !isFirstMeasurement){
     distances[DIRECTION_FRONT] = lastDistances[DIRECTION_FRONT];
   }else{
     lastDistances[DIRECTION_FRONT] = distances[DIRECTION_FRONT];
     isFirstMeasurement = false;
   }*/
-  distances[DIRECTION_LEFT] = measureDistance(TRIGGER_PIN_LEFT, ECHO_PIN_LEFT);
-  delayMicroseconds(500);
-  distances[DIRECTION_RIGHT] = measureDistance(TRIGGER_PIN_RIGHT, ECHO_PIN_RIGHT);
-  delayMicroseconds(500);
+  
+  distances[DIRECTION_RIGHT] = measureDistance(IR_PIN_RIGHT);
+  delayMicroseconds(50);
+  distances[DIRECTION_LEFT] = measureDistance(IR_PIN_LEFT);
+  delayMicroseconds(50);
 }
 
 //összetett függvény ami a körülötte lévő falak számától függően középre rendezi a robotot miközben előrefele halad. 
 void forwardWithAlignment(int maxSpeed) {
-  double distanceFromSingleWall = 13; //hány cm-re van a fal ha csak egyhez igazodik 11.5
+  
   //mindkét oldalt van fal
   if(thereIsAWall(DIRECTION_LEFT, distances) && thereIsAWall(DIRECTION_RIGHT, distances)){
 
@@ -441,6 +442,28 @@ void orientRobot(double desiredAngle){
   
 //main loop. ezt ismétli a robot.
 void loop() {
+  while (true)
+  {
+      
+      measureDistanceAllDirections();
+      mpu.update();
+      Serial.print(distances[DIRECTION_LEFT]),
+      Serial.print("\t");
+      Serial.print(distances[DIRECTION_FRONT]),
+      Serial.print("\t");
+      Serial.println(distances[DIRECTION_RIGHT]);
+      
+      if (distances[DIRECTION_FRONT] > 3 && distances[DIRECTION_FRONT] < 5)
+      {
+        //stop();
+        forwardWithAlignment(100);  
+      }
+      else
+      {
+        forwardWithAlignment(100);        
+      }
+  }
+  
   /*
   
   while (false)
@@ -505,6 +528,11 @@ void loop() {
   //while (true)
   //{
     measureDistanceAllDirections();
+    Serial.print(distances[DIRECTION_LEFT]),
+    Serial.print("\t");
+    Serial.print(distances[DIRECTION_FRONT]),
+    Serial.print("\t");
+    Serial.println(distances[DIRECTION_RIGHT]);
     double frontDistanceAtTileCenter = distances[DIRECTION_FRONT];
     int newCommand = 0;
     bool thereWasANewCommand = false;
@@ -604,7 +632,7 @@ void loop() {
 
     if(commands[currentCommand] == 0){
       if(distances[DIRECTION_FRONT] < 28.5){
-        if(measureFrontDistanceWithFilter(TRIGGER_PIN_LEFT,ECHO_PIN_LEFT) > measureFrontDistanceWithFilter(TRIGGER_PIN_RIGHT,ECHO_PIN_RIGHT)){
+        if(measureFrontDistanceWithFilter(IR_PIN_LEFT) > measureFrontDistanceWithFilter(IR_PIN_RIGHT)){
           commands[currentCommand] = DIRECTION_LEFT;
         }
         else{
