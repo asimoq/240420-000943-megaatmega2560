@@ -26,6 +26,13 @@ float lastCorrectAngle = 0;
 #define IR_PIN_RIGHT A2  // Right IR sensor connected to analog pin A2
 #define IR_PIN_LEFT A0   // Left IR sensor connected to analog pin A0
 
+#define RLED A8
+#define GLED A9
+#define BLED A10
+
+
+
+
 double distances[3];
 double lastDistances[3];
 bool isFirstMeasurement = true;
@@ -42,7 +49,7 @@ double howFareAreWeFromDestinacion;
 #define ENB 6
 
 //motor speedek
-int turnMaxSpeed = 130;
+int turnMaxSpeed = 170;
 int turnMinSpeed = 75;
 int turnProportionalSpeed = turnMaxSpeed-turnMinSpeed;
 
@@ -92,6 +99,9 @@ void setup() {
   pinMode(IN3, OUTPUT);
   pinMode(IN4, OUTPUT);
   pinMode(ENB, OUTPUT);
+  pinMode(RLED,OUTPUT);
+  pinMode(GLED,OUTPUT);
+  pinMode(BLED,OUTPUT);
 
   // RFID kártyaolvasó inicializálása
   SPI.begin();
@@ -164,8 +174,8 @@ double measureDistance(int analogPin) {
     return 0; // Érzékelési tartományon kívül
   }
 
-  if (distanceCm > 30.0) {
-    return 30; // Érzékelési tartományon kívül
+  if (distanceCm > 45.0) {
+    return 45; // Érzékelési tartományon kívül
   }
 
   return distanceCm;
@@ -192,7 +202,7 @@ void stop() {
 }
 
 // Balra fordulás 90 fok
-void turnLeft(double desiredangle) {
+void turnRight(double desiredangle) {
 
   mpu.update();                   //gyro frissítése
   float startAngle = mpu.getAngleZ();  //gyro mérése és aktuális állapot mentése
@@ -216,7 +226,7 @@ void turnLeft(double desiredangle) {
 }
 
 // Jobbra fordulás 90 fok. Magyarázatért look up turnLeft()
-void turnRight(double desiredangle) {
+void turnLeft(double desiredangle) {
   mpu.update();
   float startAngle = mpu.getAngleZ();  //gyro mérése és aktuális állapot mentése
   float currentAngle = mpu.getAngleZ(); 
@@ -442,7 +452,7 @@ void orientRobot(double desiredAngle){
   
 //main loop. ezt ismétli a robot.
 void loop() {
-  while (true)
+  while (false)
   {
       
       measureDistanceAllDirections();
@@ -463,7 +473,10 @@ void loop() {
         forwardWithAlignment(100);        
       }
   }
+
   
+  
+
   /*
   
   while (false)
@@ -523,6 +536,50 @@ void loop() {
       }
   }
   */
+
+ while (true)
+ {
+  measureDistanceAllDirections();
+  while (distances[DIRECTION_FRONT] > 10 || distances[DIRECTION_FRONT] < 2 )
+  {
+    measureDistanceAllDirections();
+    
+    forwardWithAlignment(100);
+    mpu.update();
+    switch (rfidToDirection())
+    {
+    case DIRECTION_LEFT:
+      delay(1000);
+      turnLeft(85);
+      break;
+    case DIRECTION_RIGHT:
+      delay(1000);
+      turnRight(85);
+      break;
+    case DIRECTION_STOP:
+      stop();
+            drive(90,-90);
+            delay(2000);
+            while (true){
+              stop();
+            }
+      break;
+    
+    default:
+      break;
+    }
+    
+
+  }
+  stop();
+  if(distances[DIRECTION_LEFT]>=distances[DIRECTION_RIGHT]){
+    turnLeft(85);
+  }else{
+    turnRight(85);
+  }
+  
+ }
+ 
  
 
   //while (true)
